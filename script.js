@@ -16,6 +16,7 @@ const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
 
 const DEFAULT_FEATURES = { summary: false };
 const LS_KEY_REGION = 'ytkw:region';
+const LS_KEY_MODE = 'ytkw:mode';
 
 const REGIONS = [
   { code: 'KR', flag: '🇰🇷', label: '한국' },
@@ -91,10 +92,18 @@ const historyModal   = $('historyModal');
 const historyFilter  = $('historyFilter');
 const regionFlagBtn  = $('regionFlagBtn');
 const regionPopover  = $('regionPopover');
+const modeTabs       = $('modeTabs');
+const channelsWrap   = $('channelsWrap');
+const channelsBody   = $('channelsBody');
 
 let currentRegion = localStorage.getItem(LS_KEY_REGION);
 if (currentRegion === null) currentRegion = 'KR'; // 기본
 if (!REGIONS.find(r => r.code === currentRegion)) currentRegion = 'KR';
+
+let searchMode = localStorage.getItem(LS_KEY_MODE) || 'video'; // 'video' | 'channel'
+let allChannels = [];
+let displayChannels = [];
+let currentChannelSort = { key: 'growthSpeed', dir: 'desc' };
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -159,11 +168,43 @@ function init() {
   applyViewModeButtonState();
   applyFeatureFlags();
   applyRegionFlag();
+  applySearchMode();
   updateBlockListButton();
   updateSavedListButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
+}
+
+function applySearchMode() {
+  document.body.classList.toggle('mode-channel', searchMode === 'channel');
+  modeTabs.querySelectorAll('.mode-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.mode === searchMode);
+  });
+  if (searchMode === 'channel') {
+    keywordInput.placeholder = '채널 관련 키워드 입력';
+  } else {
+    keywordInput.placeholder = '단어 또는 문장 입력';
+  }
+}
+
+function setSearchMode(mode) {
+  if (mode === searchMode) return;
+  searchMode = mode;
+  localStorage.setItem(LS_KEY_MODE, mode);
+  applySearchMode();
+  // 결과 영역 초기화
+  tableWrap.hidden = true;
+  cardGrid.hidden = true;
+  channelsWrap.hidden = true;
+  resultsControls.hidden = true;
+  bulkActions.classList.add('hidden');
+  emptyState.hidden = false;
+  emptyState.querySelector('p').textContent = mode === 'channel'
+    ? '키워드로 채널을 검색하세요. 예) minimalism, 영어회화'
+    : '검색어를 입력하고 검색 버튼을 클릭하세요.';
+  hasSearched = false;
+  resultCountEl.textContent = '0개';
 }
 
 function applyRegionFlag() {
@@ -265,6 +306,27 @@ function bindEvents() {
   });
   // 정렬 기준: 클라이언트 정렬은 재검색 안 함, 서버 정렬은 재검색
   sortOrderEl.addEventListener('change', handleSortOrderChange);
+
+  // 모드 탭 (영상 / 채널)
+  modeTabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.mode-tab');
+    if (tab) setSearchMode(tab.dataset.mode);
+  });
+
+  // 채널 컬럼 정렬
+  channelsWrap.addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable[data-csort]');
+    if (!th) return;
+    const key = th.dataset.csort;
+    if (currentChannelSort.key === key) {
+      currentChannelSort.dir = currentChannelSort.dir === 'desc' ? 'asc' : 'desc';
+    } else {
+      currentChannelSort.key = key;
+      currentChannelSort.dir = 'desc';
+    }
+    sortChannels();
+    renderChannelsTable();
+  });
 
   // 국가 선택기 (플래그)
   regionFlagBtn.addEventListener('click', (e) => {
@@ -1233,10 +1295,15 @@ async function onSearch() {
     return;
   }
 
+  if (searchMode === 'channel') {
+    return onSearchChannels(q, apiKey);
+  }
+
   hasSearched = true;
   progressBar.classList.add('active');
   emptyState.hidden = true;
   tableWrap.hidden = true;
+  channelsWrap.hidden = true;
 
   try {
     const params = buildSearchParams(q);
@@ -1341,6 +1408,176 @@ async function onSearch() {
   } finally {
     progressBar.classList.remove('active');
   }
+}
+
+/* ───────── 채널 검색 ───────── */
+async function onSearchChannels(q, apiKey) {
+  hasSearched = true;
+  progressBar.classList.add('active');
+  emptyState.hidden = true;
+  tableWrap.hidden = true;
+  cardGrid.hidden = true;
+  channelsWrap.hidden = true;
+
+  try {
+    const search = await ytFetch('search', {
+      part: 'snippet',
+      type: 'channel',
+      maxResults: maxResultsEl.value,
+      q,
+      ...(currentRegion ? { regionCode: currentRegion } : {}),
+      key: apiKey,
+    });
+    const ids = (search.items || [])
+      .map(it => it.snippet?.channelId || it.id?.channelId)
+      .filter(Boolean);
+    if (!ids.length) {
+      allChannels = [];
+      displayChannels = [];
+      renderChannelResults();
+      showToast('채널 결과 없음');
+      return;
+    }
+
+    const details = await fetchInBatches('channels',
+      { part: 'snippet,statistics,contentDetails' }, ids, apiKey);
+
+    allChannels = details.filter(c => {
+      // 차단된 채널 제외
+      return !blockedChannels.has(c.id);
+    }).map(c => {
+      const subs   = num(c.statistics?.subscriberCount);
+      const views  = num(c.statistics?.viewCount);
+      const videoCount = num(c.statistics?.videoCount);
+      const publishedAt = c.snippet?.publishedAt || '';
+      const days = publishedAt ? Math.max(1, daysSince(publishedAt)) : 1;
+      const avgViewPerVideo = videoCount > 0 ? views / videoCount : 0;
+
+      const viewToSubRatio = views > 0 ? (subs / views) * 100 : null; // %
+      const dailySubGrowth = days > 0 ? subs / days : null; // 명/일
+      const videoPerformance = subs > 0 ? avgViewPerVideo / subs : null; // 배수
+      const growthSpeed = days > 0 ? views / days : null; // 일평균 조회수
+
+      return {
+        channelId: c.id,
+        name: decodeHtml(c.snippet?.title || ''),
+        description: decodeHtml(c.snippet?.description || ''),
+        thumbnail: c.snippet?.thumbnails?.medium?.url
+          || c.snippet?.thumbnails?.default?.url || '',
+        country: c.snippet?.country || '',
+        customUrl: c.snippet?.customUrl || '',
+        publishedAt,
+        days,
+        subscribers: subs,
+        totalViews: views,
+        videoCount,
+        avgViewPerVideo,
+        viewToSubRatio,
+        viewToSubTier: rateTier(viewToSubRatio, [0.5, 1, 3, 6]),
+        dailySubGrowth,
+        dailySubTier: rateTier(dailySubGrowth, [1, 10, 100, 1000]),
+        videoPerformance,
+        videoPerfTier: rateTier(videoPerformance, [0.05, 0.2, 0.5, 1.5]),
+        growthSpeed,
+        growthTier: rateTier(growthSpeed, [100, 1000, 10000, 100000]),
+      };
+    });
+
+    pushHistory(q);
+    displayChannels = [...allChannels];
+    sortChannels();
+    renderChannelResults();
+    showToast(`✅ ${allChannels.length}개 채널 검색됨`);
+  } catch (err) {
+    console.error(err);
+    showToast(`오류: ${err.message}`);
+  } finally {
+    progressBar.classList.remove('active');
+  }
+}
+
+function sortChannels() {
+  const { key, dir } = currentChannelSort;
+  displayChannels.sort((a, b) => {
+    let av, bv;
+    if (key === 'publishedAt') {
+      av = new Date(a.publishedAt).getTime();
+      bv = new Date(b.publishedAt).getTime();
+    } else {
+      av = a[key] ?? -Infinity;
+      bv = b[key] ?? -Infinity;
+    }
+    return dir === 'desc' ? bv - av : av - bv;
+  });
+  // 헤더 표시
+  channelsWrap.querySelectorAll('th.sortable[data-csort]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.csort === key) th.classList.add(`sort-${dir}`);
+  });
+}
+
+function renderChannelResults() {
+  resultCountEl.textContent = `${displayChannels.length}개`;
+  if (!displayChannels.length) {
+    channelsWrap.hidden = true;
+    emptyState.hidden = false;
+    const p = emptyState.querySelector('p');
+    p.textContent = '채널 검색 결과가 없습니다. 키워드를 바꿔보세요.';
+    return;
+  }
+  emptyState.hidden = true;
+  channelsWrap.hidden = false;
+  renderChannelsTable();
+}
+
+function renderChannelsTable() {
+  const r2 = REGIONS.find(r => r.code === currentRegion);
+  channelsBody.innerHTML = displayChannels.map(c => {
+    // 국가 플래그 표시
+    const country = c.country || '';
+    const countryRegion = REGIONS.find(r => r.code === country);
+    const flagEmoji = countryRegion ? countryRegion.flag : '';
+    return `
+      <tr>
+        <td class="cb"><input type="checkbox" data-channel-id="${escapeHtml(c.channelId)}" /></td>
+        <td class="channel-avatar-cell">
+          <div class="channel-avatar-wrap">
+            <img class="channel-avatar" src="${c.thumbnail}" alt="" loading="lazy" />
+            ${flagEmoji ? `<span class="channel-country-flag" title="${escapeHtml(country)}">${flagEmoji}</span>` : ''}
+          </div>
+        </td>
+        <td>
+          <a class="channel-name" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" title="${escapeHtml(c.description)}">${escapeHtml(c.name)}</a>
+        </td>
+        <td>${fmtDate(c.publishedAt)}</td>
+        <td class="num-cell">${fmtCompact(c.subscribers)}</td>
+        <td>${tierWithValue(c.viewToSubRatio, c.viewToSubTier, '%')}</td>
+        <td>${tierWithValue(c.dailySubGrowth, c.dailySubTier, '명')}</td>
+        <td>${tierWithValue(c.videoPerformance, c.videoPerfTier, 'x')}</td>
+        <td>${tierWithValue(c.growthSpeed, c.growthTier, 'v/일')}</td>
+        <td class="num-cell">${fmtCompact(c.totalViews)}</td>
+        <td class="num-cell">${fmtCompact(c.videoCount)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function tierWithValue(val, tier, suffix) {
+  if (val === null || val === undefined || isNaN(val)) return '<span class="dash-text">-</span>';
+  let label;
+  if (suffix === '%') {
+    label = val < 0.1 ? val.toFixed(2) + '%' : val.toFixed(1) + '%';
+  } else if (suffix === 'x') {
+    label = val >= 100 ? '>100x' : (val >= 10 ? Math.round(val) + 'x' : val.toFixed(2) + 'x');
+  } else if (suffix === '명') {
+    label = fmtCompact(Math.round(val)) + '/일';
+  } else if (suffix === 'v/일') {
+    label = fmtCompact(Math.round(val)) + '/일';
+  } else {
+    label = String(val);
+  }
+  const t = tier || 'minimal';
+  return `<span class="mult-badge mult-inline mult-${t}">${label}</span>`;
 }
 
 function buildSearchParams(q) {

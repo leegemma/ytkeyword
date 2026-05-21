@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -15,6 +15,12 @@
   </script>
 </head>
 <body>
+  <!-- Mode tabs (영상 찾기 / 채널 찾기) -->
+  <nav class="mode-tabs" id="modeTabs" role="tablist">
+    <button class="mode-tab active" data-mode="video" role="tab">📹 영상 찾기</button>
+    <button class="mode-tab" data-mode="channel" role="tab">📺 채널 찾기</button>
+  </nav>
+
   <!-- Top toolbar -->
   <header class="toolbar">
     <div class="toolbar-left">
@@ -150,6 +156,28 @@
     </div>
 
     <div class="card-grid" id="cardGrid" hidden></div>
+
+    <!-- 채널 검색 결과 -->
+    <div class="table-wrap" id="channelsWrap" hidden>
+      <table class="results-table channels-table">
+        <thead>
+          <tr>
+            <th class="cb"><input type="checkbox" id="selectAllChannels" /></th>
+            <th class="th-thumb">프로필</th>
+            <th>채널명</th>
+            <th class="sortable" data-csort="publishedAt">개설일</th>
+            <th class="sortable num" data-csort="subscribers">구독자</th>
+            <th class="sortable" data-csort="viewToSubRatio" title="총 조회수 대비 구독자 비율">구독전환률</th>
+            <th class="sortable" data-csort="dailySubGrowth" title="채널 운영 기간 대비 평균 일일 구독">일평균 구독</th>
+            <th class="sortable" data-csort="videoPerformance" title="평균 영상 조회수 ÷ 구독자">영상성과</th>
+            <th class="sortable" data-csort="growthSpeed" title="누적 조회수 ÷ 운영일">성장속도</th>
+            <th class="sortable num" data-csort="totalViews">총 조회수</th>
+            <th class="sortable num" data-csort="videoCount">총 영상</th>
+          </tr>
+        </thead>
+        <tbody id="channelsBody"></tbody>
+      </table>
+    </div>
 
     <div class="table-wrap" id="tableWrap" hidden>
       <table class="results-table">
@@ -570,6 +598,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=11"></script>
+  <script src="script.js?v=12"></script>
 </body>
 </html>

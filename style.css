@@ -59,6 +59,87 @@ body {
 
 a { color: var(--green-dark); }
 
+/* ────────────── Mode tabs (영상 찾기 / 채널 찾기) ────────────── */
+.mode-tabs {
+  display: flex;
+  background: var(--bg);
+  border-bottom: 1px solid var(--gray-200);
+  padding: 0 20px;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.mode-tab {
+  background: none;
+  border: none;
+  padding: 14px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.mode-tab:hover { color: var(--gray-700); }
+.mode-tab.active {
+  color: var(--green-dark);
+  border-color: var(--green);
+}
+
+/* 채널 모드에서 영상 전용 요소 숨김 */
+body.mode-channel #presetChips,
+body.mode-channel #viewToggle,
+body.mode-channel #bulkActions {
+  display: none !important;
+}
+
+/* 채널 테이블 */
+.channels-table .channel-avatar-cell {
+  width: 50px;
+  text-align: center;
+}
+.channels-table .channel-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--gray-100);
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+  position: relative;
+}
+.channel-avatar-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+}
+.channel-country-flag {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: var(--bg);
+  border: 1px solid var(--gray-200);
+  border-radius: 50%;
+  font-size: 11px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.channels-table .channel-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  text-decoration: none;
+}
+.channels-table .channel-name:hover {
+  color: var(--green-dark);
+  text-decoration: underline;
+}
+
 /* ────────────── Toolbar ────────────── */
 .toolbar {
   display: flex;
