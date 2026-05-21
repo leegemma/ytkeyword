@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -280,8 +280,139 @@
     </div>
   </div>
 
+  <!-- Video detail modal -->
+  <div id="detailModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel modal-panel-detail">
+      <header class="detail-head">
+        <nav class="detail-tabs" role="tablist">
+          <button class="detail-tab active" data-tab="video" role="tab">영상 정보</button>
+          <button class="detail-tab" data-tab="channel" role="tab">채널 정보</button>
+          <button class="detail-tab" data-tab="popular" role="tab">인기 영상</button>
+        </nav>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+
+      <div class="detail-body">
+        <!-- Tab: 영상 정보 -->
+        <div class="detail-pane" data-pane="video">
+          <div class="detail-video-hero">
+            <div class="hero-thumb">
+              <img id="detailThumb" alt="" />
+              <span id="detailDuration" class="duration-overlay"></span>
+            </div>
+            <div class="hero-info">
+              <h3 id="detailTitle"></h3>
+              <div id="detailMeta" class="hero-meta"></div>
+              <a id="detailYouTubeBtn" class="detail-link-btn" target="_blank" rel="noopener">유튜브에서 영상 보기 →</a>
+            </div>
+          </div>
+
+          <div class="stat-cards-grid">
+            <div class="stat-card stat-outlier">
+              <div class="stat-icon">🔥</div>
+              <div class="stat-value" id="statOutlier">-</div>
+              <div class="stat-label">Outlier Score</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">👁</div>
+              <div class="stat-value" id="statViews">-</div>
+              <div class="stat-label">조회수</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">⏱</div>
+              <div class="stat-value" id="statVph">-</div>
+              <div class="stat-label">Views Per Hour</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">👍</div>
+              <div class="stat-value" id="statLikes">-</div>
+              <div class="stat-label">좋아요</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">📊</div>
+              <div class="stat-value" id="statContribution">-</div>
+              <div class="stat-label">기여도</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💯</div>
+              <div class="stat-value" id="statEngagement">-</div>
+              <div class="stat-label">노출 확률</div>
+            </div>
+          </div>
+
+          <section class="quick-actions-section">
+            <h4>Quick Actions</h4>
+            <div class="action-grid">
+              <button class="action-btn" data-action="openYT">
+                <span class="action-icon">↗</span><span>Open in YouTube</span>
+              </button>
+              <button class="action-btn" data-action="similarTitles">
+                <span class="action-icon">🔍</span><span>Find similar titles</span>
+              </button>
+              <button class="action-btn" data-action="similarThumbs">
+                <span class="action-icon">🖼</span><span>Find similar thumbnails</span>
+              </button>
+              <button class="action-btn" data-action="copyTitle">
+                <span class="action-icon">📋</span><span>Copy title</span>
+              </button>
+              <button class="action-btn" data-action="copyLink">
+                <span class="action-icon">🔗</span><span>Copy link</span>
+              </button>
+              <button class="action-btn" data-action="addCompetitor">
+                <span class="action-icon">⭐</span><span>Save channel</span>
+              </button>
+            </div>
+          </section>
+
+          <details class="detail-extra">
+            <summary>태그 & 설명</summary>
+            <div id="detailTags" class="detail-tags"></div>
+            <div id="detailDescription" class="detail-description-text"></div>
+          </details>
+        </div>
+
+        <!-- Tab: 채널 정보 -->
+        <div class="detail-pane hidden" data-pane="channel">
+          <div class="channel-hero">
+            <img id="channelThumb" class="channel-avatar" alt="" />
+            <div class="channel-hero-info">
+              <h3 id="channelName"></h3>
+              <a id="channelYouTubeLink" target="_blank" rel="noopener" class="detail-link-btn">유튜브에서 채널 보기 →</a>
+            </div>
+          </div>
+          <div class="stat-cards-grid">
+            <div class="stat-card"><div class="stat-value" id="chStat1">-</div><div class="stat-label">구독자</div></div>
+            <div class="stat-card"><div class="stat-value" id="chStat2">-</div><div class="stat-label">총 영상 수</div></div>
+            <div class="stat-card"><div class="stat-value" id="chStat3">-</div><div class="stat-label">채널 개설 경과</div></div>
+            <div class="stat-card"><div class="stat-value" id="chStat4">-</div><div class="stat-label">누적 조회수</div></div>
+            <div class="stat-card"><div class="stat-value" id="chStat5">-</div><div class="stat-label">평균 조회수</div></div>
+          </div>
+          <div class="channel-desc">
+            <h4>채널 소개</h4>
+            <p id="channelDescription">-</p>
+          </div>
+          <div class="channel-recent">
+            <h4>최근 영상</h4>
+            <div id="channelRecentGrid" class="mini-grid">
+              <p class="loading-text">로딩 중...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: 인기 영상 -->
+        <div class="detail-pane hidden" data-pane="popular">
+          <h4 class="pane-heading">이 채널의 인기 영상</h4>
+          <div id="popularGrid" class="mini-grid">
+            <p class="loading-text">탭을 누르면 로딩됩니다 (API quota 100 units 사용)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=3"></script>
+  <script src="script.js?v=4"></script>
 </body>
 </html>

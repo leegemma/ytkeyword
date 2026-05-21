@@ -31,6 +31,7 @@ const emptyState     = $('emptyState');
 const tableWrap      = $('tableWrap');
 const cardGrid       = $('cardGrid');
 const resultsControls = $('resultsControls');
+const detailModal    = $('detailModal');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -49,6 +50,7 @@ let currentSort = { key: 'performance', dir: 'desc' };
 let filters = freshFilters();
 let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
 let activePreset = null;
+let currentDetail = null; // { result, recent, popular }
 
 function freshFilters() {
   return {
@@ -108,6 +110,21 @@ function bindEvents() {
   // 뷰 모드 토글
   document.querySelectorAll('.view-mode-btn').forEach(b => {
     b.addEventListener('click', () => setViewMode(b.dataset.view));
+  });
+
+  // 영상 클릭 → 디테일 모달
+  [tableWrap, cardGrid].forEach(container => {
+    container.addEventListener('click', handleResultClick);
+  });
+
+  // 디테일 모달 탭 + 액션
+  detailModal.querySelector('.detail-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.detail-tab');
+    if (tab) switchDetailTab(tab.dataset.tab);
+  });
+  detailModal.querySelector('.action-grid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (btn) handleQuickAction(btn.dataset.action);
   });
 
   // Modal close
@@ -236,6 +253,226 @@ function setViewMode(mode) {
   if (displayResults.length) renderResults();
 }
 
+/* ───────── 영상 디테일 모달 ───────── */
+function handleResultClick(e) {
+  const trigger = e.target.closest('[data-detail-id]');
+  if (!trigger) return;
+  // 모디파이어/가운데클릭이면 브라우저 기본 동작 (새 탭 등) 허용
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  const id = trigger.dataset.detailId;
+  const result = allResults.find(r => r.videoId === id);
+  if (result) openVideoDetail(result);
+}
+
+function openVideoDetail(result) {
+  currentDetail = { result, recent: null, popular: null };
+  populateVideoTab(result);
+  populateChannelTab(result);
+  switchDetailTab('video');
+  detailModal.classList.remove('hidden');
+}
+
+function populateVideoTab(r) {
+  $('detailThumb').src = r.thumbnail;
+  $('detailDuration').textContent = r.duration || '';
+  $('detailTitle').textContent = r.title;
+  $('detailMeta').textContent =
+    `${fmtCompact(r.viewCount)} views · ${escapeText(r.channelTitle)} · ${fmtDate(r.publishedAt)} · ${r.days}일 전`;
+  $('detailYouTubeBtn').href = `https://www.youtube.com/watch?v=${r.videoId}`;
+
+  $('statOutlier').innerHTML  = r.performance != null
+    ? multiplierBadge(r.performance)
+    : '<span class="dash-text">-</span>';
+  $('statViews').textContent  = fmtCompact(r.viewCount);
+  $('statVph').textContent    = fmtVPH(r.vph);
+  $('statLikes').textContent  = fmtCompact(r.likeCount);
+  $('statContribution').textContent = r.contribution != null
+    ? (r.contribution >= 10 ? Math.round(r.contribution) + 'x' : r.contribution.toFixed(1) + 'x')
+    : '-';
+  $('statEngagement').textContent = r.exposure != null
+    ? r.exposure.toFixed(1) + '%'
+    : '-';
+
+  // 태그 + 설명
+  const tagsHtml = (r.tags && r.tags.length)
+    ? r.tags.slice(0, 20).map(t => `<span style="margin-right:6px">#${escapeText(t)}</span>`).join('')
+    : '<span style="color:var(--gray-400)">태그 없음</span>';
+  $('detailTags').innerHTML = tagsHtml;
+  $('detailDescription').textContent = r.description || '설명 없음';
+}
+
+function populateChannelTab(r) {
+  $('channelThumb').src = r.channelThumbnail || '';
+  $('channelName').textContent = r.channelTitle;
+  $('channelYouTubeLink').href = `https://www.youtube.com/channel/${r.channelId}`;
+  $('chStat1').textContent = fmtCompact(r.subscriberCount);
+  $('chStat2').textContent = fmtCompact(r.channelVideoCount);
+  $('chStat3').textContent = r.channelDays != null ? r.channelDays.toLocaleString() + '일' : '-';
+  $('chStat4').textContent = fmtCompact(r.channelViewCount);
+  $('chStat5').textContent = r.channelVideoCount > 0
+    ? fmtCompact(Math.round(r.channelViewCount / r.channelVideoCount))
+    : '-';
+  $('channelDescription').textContent = r.channelDescription || '소개 없음';
+  // 최근 영상 영역은 탭 진입 시 lazy 로드
+  $('channelRecentGrid').innerHTML = '<p class="loading-text">탭을 누르면 로딩됩니다</p>';
+}
+
+function switchDetailTab(tab) {
+  document.querySelectorAll('.detail-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.detail-pane').forEach(p =>
+    p.classList.toggle('hidden', p.dataset.pane !== tab));
+  if (tab === 'channel' && currentDetail && !currentDetail.recent) {
+    loadChannelRecent();
+  } else if (tab === 'popular' && currentDetail && !currentDetail.popular) {
+    loadChannelPopular();
+  }
+}
+
+async function loadChannelRecent() {
+  if (!currentDetail) return;
+  const playlistId = currentDetail.result.uploadsPlaylistId;
+  if (!playlistId) {
+    $('channelRecentGrid').innerHTML = '<p class="empty-text">최근 영상 정보 없음</p>';
+    return;
+  }
+  $('channelRecentGrid').innerHTML = '<p class="loading-text">로딩 중...</p>';
+  try {
+    const apiKey = getApiKey();
+    const data = await ytFetch('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: 12,
+      key: apiKey,
+    });
+    const ids = (data.items || []).map(it => it.contentDetails.videoId).filter(Boolean);
+    const stats = await fetchInBatches('videos',
+      { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const items = (data.items || []).map(it => {
+      const id = it.contentDetails.videoId;
+      const s = statsMap[id] || {};
+      return {
+        videoId: id,
+        title: it.snippet.title,
+        thumbnail: it.snippet.thumbnails?.medium?.url
+          || it.snippet.thumbnails?.default?.url || '',
+        viewCount: num(s.statistics?.viewCount),
+        publishedAt: it.snippet.publishedAt,
+        duration: formatDuration(parseDurationSec(s.contentDetails?.duration)),
+      };
+    });
+    currentDetail.recent = items;
+    renderMiniGrid('channelRecentGrid', items);
+  } catch (err) {
+    $('channelRecentGrid').innerHTML = `<p class="empty-text">오류: ${escapeText(err.message)}</p>`;
+  }
+}
+
+async function loadChannelPopular() {
+  if (!currentDetail) return;
+  const channelId = currentDetail.result.channelId;
+  $('popularGrid').innerHTML = '<p class="loading-text">로딩 중... (API quota 100 units 사용)</p>';
+  try {
+    const apiKey = getApiKey();
+    const search = await ytFetch('search', {
+      part: 'snippet',
+      type: 'video',
+      channelId,
+      order: 'viewCount',
+      maxResults: 12,
+      key: apiKey,
+    });
+    const videos = (search.items || []).filter(v => v.id?.videoId);
+    const ids = videos.map(v => v.id.videoId);
+    const stats = await fetchInBatches('videos',
+      { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const items = videos.map(v => {
+      const s = statsMap[v.id.videoId] || {};
+      return {
+        videoId: v.id.videoId,
+        title: v.snippet.title,
+        thumbnail: v.snippet.thumbnails?.medium?.url
+          || v.snippet.thumbnails?.default?.url || '',
+        viewCount: num(s.statistics?.viewCount),
+        publishedAt: v.snippet.publishedAt,
+        duration: formatDuration(parseDurationSec(s.contentDetails?.duration)),
+      };
+    });
+    currentDetail.popular = items;
+    renderMiniGrid('popularGrid', items);
+  } catch (err) {
+    $('popularGrid').innerHTML = `<p class="empty-text">오류: ${escapeText(err.message)}</p>`;
+  }
+}
+
+function renderMiniGrid(elId, items) {
+  if (!items.length) {
+    $(elId).innerHTML = '<p class="empty-text">영상 없음</p>';
+    return;
+  }
+  $(elId).innerHTML = items.map(it => `
+    <a class="mini-card" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
+      <div class="mini-thumb">
+        <img src="${it.thumbnail}" alt="" loading="lazy" />
+        ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
+      </div>
+      <div class="mini-info">
+        <h5>${escapeHtml(it.title)}</h5>
+        <div class="mini-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
+      </div>
+    </a>
+  `).join('');
+}
+
+function handleQuickAction(action) {
+  if (!currentDetail) return;
+  const r = currentDetail.result;
+  switch (action) {
+    case 'openYT':
+      window.open(`https://www.youtube.com/watch?v=${r.videoId}`, '_blank', 'noopener');
+      break;
+    case 'similarTitles':
+    case 'similarThumbs': {
+      // 제목에서 해시태그/이모지 제거 → 핵심 단어 추출 → 새 검색
+      const cleaned = String(r.title)
+        .replace(/[#@][^\s]+/g, '')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const keyword = cleaned.split(' ').slice(0, 4).join(' ') || r.title;
+      detailModal.classList.add('hidden');
+      keywordInput.value = keyword;
+      onSearch();
+      break;
+    }
+    case 'copyTitle':
+      navigator.clipboard.writeText(r.title);
+      showToast('📋 제목 복사됨');
+      break;
+    case 'copyLink':
+      navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${r.videoId}`);
+      showToast('🔗 링크 복사됨');
+      break;
+    case 'addCompetitor': {
+      const key = 'ytkw:competitors';
+      const list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (list.find(c => c.id === r.channelId)) {
+        showToast('이미 저장된 채널입니다');
+      } else {
+        list.push({ id: r.channelId, name: r.channelTitle, savedAt: Date.now() });
+        localStorage.setItem(key, JSON.stringify(list));
+        showToast(`⭐ "${r.channelTitle}" 저장됨`);
+      }
+      break;
+    }
+  }
+}
+
+function escapeText(s) { return String(s ?? ''); }
+
 /* ───────── 테마 ───────── */
 function toggleTheme() {
   const current = document.documentElement.dataset.theme;
@@ -299,8 +536,8 @@ async function onSearch() {
     const channelIds = [...new Set(videos.map(v => v.snippet.channelId))];
 
     const [videoStats, channelStats] = await Promise.all([
-      fetchInBatches('videos', { part: 'statistics,contentDetails' }, videoIds, apiKey),
-      fetchInBatches('channels', { part: 'statistics' }, channelIds, apiKey),
+      fetchInBatches('videos', { part: 'statistics,contentDetails,snippet' }, videoIds, apiKey),
+      fetchInBatches('channels', { part: 'statistics,snippet,contentDetails' }, channelIds, apiKey),
     ]);
 
     const detailMap = mapBy(videoStats, 'id');
@@ -336,6 +573,13 @@ async function onSearch() {
         channelId: v.snippet.channelId,
         publishedAt: v.snippet.publishedAt,
         thumbnail: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url || '',
+        description: d.snippet?.description || v.snippet?.description || '',
+        tags: d.snippet?.tags || [],
+        channelThumbnail: c.snippet?.thumbnails?.medium?.url || c.snippet?.thumbnails?.default?.url || '',
+        channelDescription: c.snippet?.description || '',
+        channelPublishedAt: c.snippet?.publishedAt || '',
+        channelDays: c.snippet?.publishedAt ? daysSince(c.snippet.publishedAt) : null,
+        uploadsPlaylistId: c.contentDetails?.relatedPlaylists?.uploads || '',
         subscriberCount: subs,
         viewCount: views,
         likeCount: likes,
@@ -487,16 +731,16 @@ function renderResults() {
 
 function renderTable() {
   resultsBody.innerHTML = displayResults.map((r) => `
-    <tr>
+    <tr data-detail-id="${r.videoId}">
       <td class="cb"><input type="checkbox" data-id="${r.videoId}" /></td>
       <td>
-        <div class="thumb-cell">
+        <div class="thumb-cell" data-detail-id="${r.videoId}">
           <img src="${r.thumbnail}" alt="" loading="lazy" />
           ${r.duration ? `<span class="thumb-duration">${r.duration}</span>` : ''}
         </div>
       </td>
       <td>
-        <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
+        <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">${escapeHtml(r.title)}</a>
       </td>
       <td class="num-cell">${fmt(r.viewCount)}</td>
       <td class="num-cell">${fmtVPH(r.vph)}</td>
@@ -516,7 +760,7 @@ function renderTable() {
 function renderCards() {
   cardGrid.innerHTML = displayResults.map((r) => `
     <article class="result-card">
-      <a class="card-thumb" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener">
+      <a class="card-thumb" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">
         <img src="${r.thumbnail}" alt="" loading="lazy" />
         ${multiplierBadge(r.performance)}
         <span class="vph-pill">${fmtVPH(r.vph)}</span>
