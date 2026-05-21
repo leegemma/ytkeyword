@@ -434,10 +434,77 @@ body.mode-channel #bulkActions {
 
 /* ────────────── Card grid ────────────── */
 .card-grid {
+  padding: 16px;
+}
+
+/* 가로/세로 섹션 */
+.card-section {
+  margin-bottom: 28px;
+}
+.card-section:last-child { margin-bottom: 0; }
+.card-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--gray-700);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-count {
+  color: var(--gray-500);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.card-grid-landscape {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
-  padding: 16px;
+}
+
+.card-grid-portrait {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+/* 세로 카드 (Shorts) — 9:16 비율 */
+.result-card-portrait .card-thumb {
+  aspect-ratio: 9/16;
+}
+.result-card-portrait .card-title {
+  font-size: 12.5px;
+  -webkit-line-clamp: 2;
+  margin-bottom: 6px;
+}
+.result-card-portrait .card-info {
+  padding: 10px 12px 12px;
+}
+.result-card-portrait .card-channel {
+  font-size: 11px;
+}
+.result-card-portrait .card-meta {
+  font-size: 10px;
+}
+.result-card-portrait .vph-pill {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.result-card-portrait .mult-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.result-card-portrait .card-save-btn {
+  width: 28px;
+  height: 28px;
+  top: 8px;
+  right: 8px;
+  font-size: 13px;
+}
+.result-card-portrait .saved-badge {
+  font-size: 10px;
+  padding: 1px 6px;
 }
 
 .result-card {

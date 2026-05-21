@@ -656,6 +656,7 @@ async function loadChannelRecent() {
     const items = (data.items || []).map(it => {
       const id = it.contentDetails.videoId;
       const s = statsMap[id] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
       return {
         videoId: id,
         title: decodeHtml(it.snippet.title),
@@ -663,7 +664,8 @@ async function loadChannelRecent() {
           || it.snippet.thumbnails?.default?.url || '',
         viewCount: num(s.statistics?.viewCount),
         publishedAt: it.snippet.publishedAt,
-        duration: formatDuration(parseDurationSec(s.contentDetails?.duration)),
+        duration: formatDuration(durationSec),
+        isShorts: durationSec > 0 && durationSec <= 180,
       };
     });
     currentDetail.recent = items;
@@ -694,6 +696,7 @@ async function loadChannelPopular() {
     const statsMap = mapBy(stats, 'id');
     const items = videos.map(v => {
       const s = statsMap[v.id.videoId] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
       return {
         videoId: v.id.videoId,
         title: decodeHtml(v.snippet.title),
@@ -701,7 +704,8 @@ async function loadChannelPopular() {
           || v.snippet.thumbnails?.default?.url || '',
         viewCount: num(s.statistics?.viewCount),
         publishedAt: v.snippet.publishedAt,
-        duration: formatDuration(parseDurationSec(s.contentDetails?.duration)),
+        duration: formatDuration(durationSec),
+        isShorts: durationSec > 0 && durationSec <= 180,
       };
     });
     currentDetail.popular = items;
@@ -711,23 +715,38 @@ async function loadChannelPopular() {
   }
 }
 
-function renderMiniGrid(elId, items) {
+function renderMiniGrid(elOrId, items) {
+  const grid = typeof elOrId === 'string' ? $(elOrId) : elOrId;
   if (!items.length) {
-    $(elId).innerHTML = '<p class="empty-text">영상 없음</p>';
+    grid.innerHTML = '<p class="empty-text">영상 없음</p>';
     return;
   }
-  $(elId).innerHTML = items.map(it => `
-    <a class="mini-card" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
-      <div class="mini-thumb">
-        <img src="${it.thumbnail}" alt="" loading="lazy" />
-        ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
-      </div>
-      <div class="mini-info">
-        <h5>${escapeHtml(it.title)}</h5>
-        <div class="mini-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
-      </div>
-    </a>
-  `).join('');
+  // 가로/세로 분리 (isShorts 플래그 활용, 없으면 모두 가로로 간주)
+  const landscape = items.filter(it => !it.isShorts);
+  const shorts = items.filter(it => it.isShorts);
+  grid.className = '';
+  const sections = [];
+  if (landscape.length) {
+    sections.push(`
+      <section class="card-section">
+        ${shorts.length ? `<h3 class="card-section-title">📺 일반 영상 <span class="section-count">${landscape.length}개</span></h3>` : ''}
+        <div class="card-grid-landscape">
+          ${landscape.map(it => miniCardHtml(it, false)).join('')}
+        </div>
+      </section>
+    `);
+  }
+  if (shorts.length) {
+    sections.push(`
+      <section class="card-section">
+        ${landscape.length ? `<h3 class="card-section-title">📱 Shorts <span class="section-count">${shorts.length}개</span></h3>` : ''}
+        <div class="card-grid-portrait">
+          ${shorts.map(it => miniCardHtml(it, true)).join('')}
+        </div>
+      </section>
+    `);
+  }
+  grid.innerHTML = sections.join('');
 }
 
 function handleQuickAction(action) {
@@ -1808,7 +1827,7 @@ async function loadChannelLatest() {
       };
     });
     currentChannelDetail.latest = items;
-    renderChannelMiniGrid(grid, items);
+    renderMiniGrid(grid, items);
   } catch (err) {
     grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
   }
@@ -1906,24 +1925,19 @@ function renderTopGrid() {
   `).join('');
 }
 
-function renderChannelMiniGrid(grid, items) {
-  if (!items.length) {
-    grid.innerHTML = '<p class="empty-text">영상 없음</p>';
-    return;
-  }
-  grid.className = 'mini-grid';
-  grid.innerHTML = items.map(it => `
-    <a class="mini-card" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
-      <div class="mini-thumb">
+function miniCardHtml(it, isPortrait) {
+  return `
+    <a class="result-card${isPortrait ? ' result-card-portrait' : ''}" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit">
+      <div class="card-thumb">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
       </div>
-      <div class="mini-info">
-        <h5>${escapeHtml(it.title)}</h5>
-        <div class="mini-meta">${fmtCompact(it.viewCount)} views · 좋아요 ${fmtCompact(it.likeCount)} · ${fmtDate(it.publishedAt)}</div>
+      <div class="card-info">
+        <h3 class="card-title">${escapeHtml(it.title)}</h3>
+        <div class="card-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}${it.likeCount ? ` · 좋아요 ${fmtCompact(it.likeCount)}` : ''}</div>
       </div>
     </a>
-  `).join('');
+  `;
 }
 
 function buildSearchParams(q) {
@@ -2080,8 +2094,36 @@ function renderTable() {
 }
 
 function renderCards() {
-  cardGrid.innerHTML = displayResults.map((r) => `
-    <article class="result-card">
+  const landscape = displayResults.filter(r => !r.isShorts);
+  const shorts = displayResults.filter(r => r.isShorts);
+
+  const sections = [];
+  if (landscape.length) {
+    sections.push(`
+      <section class="card-section">
+        <h3 class="card-section-title">📺 일반 영상 <span class="section-count">${landscape.length}개</span></h3>
+        <div class="card-grid-landscape">
+          ${landscape.map(r => cardHtml(r, false)).join('')}
+        </div>
+      </section>
+    `);
+  }
+  if (shorts.length) {
+    sections.push(`
+      <section class="card-section">
+        <h3 class="card-section-title">📱 Shorts <span class="section-count">${shorts.length}개</span></h3>
+        <div class="card-grid-portrait">
+          ${shorts.map(r => cardHtml(r, true)).join('')}
+        </div>
+      </section>
+    `);
+  }
+  cardGrid.innerHTML = sections.join('');
+}
+
+function cardHtml(r, isPortrait) {
+  return `
+    <article class="result-card${isPortrait ? ' result-card-portrait' : ''}">
       <a class="card-thumb" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">
         <img src="${r.thumbnail}" alt="" loading="lazy" />
         ${multiplierBadge(r.performance)}
@@ -2098,7 +2140,7 @@ function renderCards() {
         </button>
       </div>
     </article>
-  `).join('');
+  `;
 }
 
 function multTier(val) {
