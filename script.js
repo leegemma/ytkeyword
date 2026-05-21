@@ -5,6 +5,7 @@
 
 const LS_KEY_API = 'ytkw:apiKey';
 const LS_KEY_HISTORY = 'ytkw:history';
+const LS_KEY_THEME = 'ytkw:theme';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +16,7 @@ const historyChips   = $('historyChips');
 const filterBtn      = $('filterBtn');
 const exportCsvBtn   = $('exportCsvBtn');
 const apiKeyBtn      = $('apiKeyBtn');
+const themeToggleBtn = $('themeToggleBtn');
 const apiKeyModal    = $('apiKeyModal');
 const apiKeyInput    = $('apiKeyInput');
 const apiKeySaveBtn  = $('apiKeySaveBtn');
@@ -70,6 +72,14 @@ function bindEvents() {
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
+  themeToggleBtn.addEventListener('click', toggleTheme);
+
+  // 사용자가 OS 테마를 바꾸면 (저장된 선택 없을 때만) 자동 반영
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem(LS_KEY_THEME)) {
+      document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+    }
+  });
   apiKeySaveBtn.addEventListener('click', saveApiKey);
   apiKeyClearBtn.addEventListener('click', clearApiKey);
 
@@ -155,6 +165,15 @@ function bindEvents() {
       updateFilterPreviewCount();
     });
   });
+}
+
+/* ───────── 테마 ───────── */
+function toggleTheme() {
+  const current = document.documentElement.dataset.theme;
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(LS_KEY_THEME, next);
+  showToast(next === 'dark' ? '🌙 다크 모드' : '☀️ 라이트 모드');
 }
 
 /* ───────── API 키 모달 ───────── */

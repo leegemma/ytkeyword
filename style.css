@@ -20,6 +20,30 @@
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.15);
   --radius: 10px;
   --radius-lg: 14px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --green: #22c55e;
+  --green-dark: #4ade80;
+  --green-soft: rgba(34, 197, 94, 0.13);
+  --green-border: rgba(34, 197, 94, 0.35);
+  --red: #f87171;
+  --red-soft: rgba(220, 38, 38, 0.2);
+  --orange: #fbbf24;
+  --gray-100: #1f1f23;
+  --gray-200: #2e2e35;
+  --gray-300: #3f3f46;
+  --gray-400: #71717a;
+  --gray-500: #a1a1aa;
+  --gray-700: #d4d4d8;
+  --gray-900: #fafafa;
+  --bg: #18181b;
+  --bg-alt: #0a0a0a;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.6);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +65,7 @@ a { color: var(--green-dark); }
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  background: #fff;
+  background: var(--bg);
   border-bottom: 1px solid var(--gray-200);
   gap: 16px;
   flex-wrap: wrap;
@@ -57,7 +81,7 @@ a { color: var(--green-dark); }
 .search-input-wrap {
   display: flex;
   align-items: center;
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--gray-300);
   border-radius: 999px;
   padding: 0 4px 0 14px;
@@ -120,7 +144,7 @@ a { color: var(--green-dark); }
 .chip .chip-x:hover { color: var(--gray-900); }
 
 .ghost-btn {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--gray-300);
   border-radius: 8px;
   padding: 8px 12px;
@@ -137,6 +161,19 @@ a { color: var(--green-dark); }
   color: var(--green-dark);
 }
 
+.ghost-btn.icon-only {
+  padding: 8px;
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+}
+
+/* 테마 토글 아이콘 */
+.icon-sun { display: none; }
+.icon-moon { display: block; }
+:root[data-theme="dark"] .icon-sun { display: block; }
+:root[data-theme="dark"] .icon-moon { display: none; }
+
 .result-count-chip {
   font-size: 13px;
   color: var(--gray-500);
@@ -148,7 +185,7 @@ a { color: var(--green-dark); }
   display: flex;
   gap: 16px;
   padding: 12px 20px;
-  background: #fff;
+  background: var(--bg);
   border-bottom: 1px solid var(--gray-200);
   flex-wrap: wrap;
   align-items: center;
@@ -168,7 +205,7 @@ a { color: var(--green-dark); }
   padding: 6px 10px;
   border: 1px solid var(--gray-300);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg);
   color: var(--gray-900);
   font-weight: 500;
   cursor: pointer;
@@ -205,7 +242,7 @@ a { color: var(--green-dark); }
 
 /* ────────────── Results table ────────────── */
 .results {
-  background: #fff;
+  background: var(--bg);
   margin: 16px 20px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--gray-200);
@@ -378,7 +415,7 @@ a { color: var(--green-dark); }
 }
 .modal-panel {
   position: relative;
-  background: #fff;
+  background: var(--bg);
   border-radius: var(--radius-lg);
   padding: 0;
   max-width: 500px;
@@ -508,7 +545,7 @@ a { color: var(--green-dark); }
   flex-wrap: wrap;
 }
 .quick-period button {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--gray-300);
   border-radius: 6px;
   padding: 6px 10px;
@@ -532,7 +569,7 @@ a { color: var(--green-dark); }
 .toggle-buttons { grid-template-columns: 1fr 1fr; }
 
 .tier-buttons button, .toggle-buttons button {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--gray-300);
   border-radius: 8px;
   padding: 10px 6px;
