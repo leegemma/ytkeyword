@@ -62,6 +62,7 @@ const regionEl       = $('region');
 /* State */
 let allResults = [];
 let displayResults = [];
+let hasSearched = false;
 let currentSort = { key: 'performance', dir: 'desc' };
 let filters = freshFilters();
 let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
@@ -344,6 +345,8 @@ function openVideoDetail(result) {
   currentDetail = { result, recent: null, popular: null };
   populateVideoTab(result);
   populateChannelTab(result);
+  // 이전 영상의 인기 영상 그리드 잔존 리셋
+  $('popularGrid').innerHTML = '<p class="loading-text">탭을 누르면 로딩됩니다 (API quota 100 units 사용)</p>';
   switchDetailTab('video');
   detailModal.classList.remove('hidden');
 }
@@ -371,7 +374,7 @@ function populateVideoTab(r) {
 
   // 태그 + 설명
   const tagsHtml = (r.tags && r.tags.length)
-    ? r.tags.slice(0, 20).map(t => `<span style="margin-right:6px">#${escapeText(t)}</span>`).join('')
+    ? r.tags.slice(0, 20).map(t => `<span style="margin-right:6px">#${escapeHtml(t)}</span>`).join('')
     : '<span style="color:var(--gray-400)">태그 없음</span>';
   $('detailTags').innerHTML = tagsHtml;
   $('detailDescription').textContent = r.description || '설명 없음';
@@ -441,7 +444,7 @@ async function loadChannelRecent() {
     currentDetail.recent = items;
     renderMiniGrid('channelRecentGrid', items);
   } catch (err) {
-    $('channelRecentGrid').innerHTML = `<p class="empty-text">오류: ${escapeText(err.message)}</p>`;
+    $('channelRecentGrid').innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -479,7 +482,7 @@ async function loadChannelPopular() {
     currentDetail.popular = items;
     renderMiniGrid('popularGrid', items);
   } catch (err) {
-    $('popularGrid').innerHTML = `<p class="empty-text">오류: ${escapeText(err.message)}</p>`;
+    $('popularGrid').innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -781,7 +784,30 @@ function updateBulkActions() {
 function clearSelection() {
   selectedIds.clear();
   resultsBody.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = false);
+  syncSelectAll();
   updateBulkActions();
+}
+
+function syncSelectAll() {
+  const sa = $('selectAll');
+  if (!sa) return;
+  const all = resultsBody.querySelectorAll('input[type="checkbox"][data-id]');
+  if (all.length === 0) {
+    sa.checked = false;
+    sa.indeterminate = false;
+    return;
+  }
+  const checkedCount = [...all].filter(c => c.checked).length;
+  if (checkedCount === 0) {
+    sa.checked = false;
+    sa.indeterminate = false;
+  } else if (checkedCount === all.length) {
+    sa.checked = true;
+    sa.indeterminate = false;
+  } else {
+    sa.checked = false;
+    sa.indeterminate = true;
+  }
 }
 
 function blockSelectedVideos() {
@@ -931,6 +957,7 @@ async function onSearch() {
     return;
   }
 
+  hasSearched = true;
   progressBar.classList.add('active');
   emptyState.hidden = true;
   tableWrap.hidden = true;
@@ -1131,9 +1158,15 @@ function renderResults() {
     tableWrap.hidden = true;
     cardGrid.hidden = true;
     resultsControls.hidden = true;
+    bulkActions.classList.add('hidden');
     emptyState.hidden = false;
-    if (allResults.length) {
-      emptyState.querySelector('p').textContent = '필터 조건에 맞는 결과가 없습니다.';
+    const p = emptyState.querySelector('p');
+    if (!hasSearched) {
+      p.textContent = '검색어를 입력하고 검색 버튼을 클릭하세요.';
+    } else if (allResults.length > 0) {
+      p.textContent = '필터 조건에 맞는 결과가 없습니다. 필터를 조정해보세요.';
+    } else {
+      p.textContent = '검색 결과가 없습니다. 다른 키워드를 시도하거나 검색 옵션을 바꿔보세요.';
     }
     return;
   }
@@ -1182,6 +1215,7 @@ function renderTable() {
       <td class="num-cell">${fmtDate(r.publishedAt)}</td>
     </tr>
   `).join('');
+  syncSelectAll();
 }
 
 function renderCards() {
