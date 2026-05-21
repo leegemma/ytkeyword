@@ -57,6 +57,10 @@ const featureModal   = $('featureModal');
 const savedListBtn   = $('savedListBtn');
 const savedListCount = $('savedListCount');
 const savedListModal = $('savedListModal');
+const historyBtn     = $('historyBtn');
+const historyBtnCount = $('historyBtnCount');
+const historyModal   = $('historyModal');
+const historyFilter  = $('historyFilter');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -209,6 +213,11 @@ function bindEvents() {
   // 저장한 영상
   savedListBtn.addEventListener('click', openSavedListModal);
   $('clearAllSavedBtn').addEventListener('click', clearAllSaved);
+
+  // 검색 기록
+  historyBtn.addEventListener('click', openHistoryModal);
+  historyFilter.addEventListener('input', renderHistoryModal);
+  $('clearAllHistoryBtn').addEventListener('click', clearAllHistory);
   // 저장 버튼 (테이블 + 카드 + mini-grid)
   [tableWrap, cardGrid].forEach(c => {
     c.addEventListener('click', (e) => {
@@ -1554,29 +1563,49 @@ function resetFilters() {
 }
 
 /* ───────── 검색 기록 ───────── */
+const HISTORY_MAX = 200;
+
 function getHistory() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY_HISTORY) || '[]'); } catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY_HISTORY) || '[]');
+    // 이전 형식(string[]) → { q, at, count } 객체로 마이그레이션
+    return raw.map(x => typeof x === 'string'
+      ? { q: x, at: 0, count: 1 }
+      : { q: x.q, at: x.at || 0, count: x.count || 1 });
+  } catch { return []; }
 }
+
+function saveHistory(h) {
+  localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(h.slice(0, HISTORY_MAX)));
+}
+
 function pushHistory(q) {
-  const h = getHistory().filter(x => x !== q);
-  h.unshift(q);
-  localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(h.slice(0, 5)));
+  let h = getHistory();
+  const existing = h.find(x => x.q === q);
+  if (existing) {
+    existing.at = Date.now();
+    existing.count = (existing.count || 1) + 1;
+    h = [existing, ...h.filter(x => x.q !== q)];
+  } else {
+    h.unshift({ q, at: Date.now(), count: 1 });
+  }
+  saveHistory(h);
   renderHistory();
 }
+
 function renderHistory() {
   const h = getHistory();
-  historyChips.innerHTML = h.map(q => `
+  const top = h.slice(0, 5);
+  historyChips.innerHTML = top.map(item => `
     <span class="chip">
-      ${escapeHtml(q)}
-      <span class="chip-x" data-q="${escapeHtml(q)}">×</span>
+      ${escapeHtml(item.q)}
+      <span class="chip-x" data-q="${escapeHtml(item.q)}">×</span>
     </span>
   `).join('');
   historyChips.querySelectorAll('.chip-x').forEach(x => {
-    x.addEventListener('click', () => {
-      const q = x.dataset.q;
-      const h2 = getHistory().filter(v => v !== q);
-      localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(h2));
-      renderHistory();
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeHistory(x.dataset.q);
     });
   });
   historyChips.querySelectorAll('.chip').forEach(chip => {
@@ -1587,6 +1616,84 @@ function renderHistory() {
       onSearch();
     });
   });
+  // 우상단 기록 버튼
+  if (h.length > 0) {
+    historyBtn.hidden = false;
+    historyBtnCount.textContent = h.length;
+  } else {
+    historyBtn.hidden = true;
+  }
+}
+
+function removeHistory(q) {
+  const h = getHistory().filter(x => x.q !== q);
+  saveHistory(h);
+  renderHistory();
+  if (!historyModal.classList.contains('hidden')) renderHistoryModal();
+}
+
+function openHistoryModal() {
+  historyFilter.value = '';
+  renderHistoryModal();
+  historyModal.classList.remove('hidden');
+  setTimeout(() => historyFilter.focus(), 50);
+}
+
+function renderHistoryModal() {
+  const h = getHistory();
+  const filter = (historyFilter.value || '').trim().toLowerCase();
+  const filtered = filter ? h.filter(item => item.q.toLowerCase().includes(filter)) : h;
+  $('historyHint').textContent = `총 ${h.length}개 · 최대 ${HISTORY_MAX}개까지 저장 · 클릭하면 다시 검색`;
+  const listEl = $('historyList');
+  listEl.innerHTML = filtered.map(item => `
+    <div class="history-item" data-q="${escapeHtml(item.q)}">
+      <div class="history-item-info">
+        <div class="history-item-q">${escapeHtml(item.q)}</div>
+        <div class="history-item-meta">${item.at ? timeAgo(item.at) : ''}</div>
+      </div>
+      ${item.count > 1 ? `<span class="history-item-count">${item.count}회</span>` : ''}
+      <button class="history-item-remove" data-remove="${escapeHtml(item.q)}" title="삭제">×</button>
+    </div>
+  `).join('');
+  // 클릭 → 검색 / × → 삭제
+  listEl.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.history-item-remove')) return;
+      keywordInput.value = el.dataset.q;
+      historyModal.classList.add('hidden');
+      onSearch();
+    });
+  });
+  listEl.querySelectorAll('.history-item-remove').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeHistory(b.dataset.remove);
+    });
+  });
+}
+
+function clearAllHistory() {
+  if (!confirm('검색 기록을 모두 삭제하시겠습니까?')) return;
+  localStorage.removeItem(LS_KEY_HISTORY);
+  renderHistory();
+  historyModal.classList.add('hidden');
+  showToast('🗑 검색 기록 삭제됨');
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return '방금 전';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}일 전`;
+  if (day < 30) return `${Math.floor(day / 7)}주 전`;
+  const d = new Date(ts);
+  return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
 }
 
 /* ───────── CSV 내보내기 ───────── */
