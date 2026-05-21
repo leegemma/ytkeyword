@@ -579,18 +579,23 @@ function populateVideoTab(r) {
     `${fmtCompact(r.viewCount)} views · ${escapeText(r.channelTitle)} · ${fmtDate(r.publishedAt)} · ${r.days}일 전`;
   $('detailYouTubeBtn').href = `https://www.youtube.com/watch?v=${r.videoId}`;
 
-  $('statOutlier').innerHTML  = r.performance != null
-    ? multiplierBadge(r.performance)
-    : '<span class="dash-text">-</span>';
+  // Key metrics pills (Engagement / Outlier / VPH)
+  $('kmEngagement').textContent = r.exposure != null
+    ? r.exposure.toFixed(1) + '%' : '-';
+  $('kmOutlier').textContent = r.performance != null
+    ? (r.performance >= 100 ? '>100x' : (r.performance >= 10 ? Math.round(r.performance) + 'x' : r.performance.toFixed(1) + 'x'))
+    : '-';
+  $('kmVph').textContent = r.vph != null ? fmtVPHShort(r.vph) : '-';
+
+  // 6장 통계 카드
   $('statViews').textContent  = fmtCompact(r.viewCount);
-  $('statVph').textContent    = fmtVPH(r.vph);
   $('statLikes').textContent  = fmtCompact(r.likeCount);
+  $('statComments').textContent = fmtCompact(r.commentCount);
   $('statContribution').textContent = r.contribution != null
     ? (r.contribution >= 10 ? Math.round(r.contribution) + 'x' : r.contribution.toFixed(1) + 'x')
     : '-';
-  $('statEngagement').textContent = r.exposure != null
-    ? r.exposure.toFixed(1) + '%'
-    : '-';
+  $('statDays').textContent = (r.days || 0) + '일';
+  $('statDuration').textContent = r.duration || '-';
 
   // 태그 + 설명
   const tagsHtml = (r.tags && r.tags.length)
@@ -1497,6 +1502,9 @@ async function onSearchChannels(q, apiKey) {
           || c.snippet?.thumbnails?.default?.url || '',
         country: c.snippet?.country || '',
         customUrl: c.snippet?.customUrl || '',
+        uploadsPlaylistId: c.contentDetails?.relatedPlaylists?.uploads || '',
+        latestVideo: null,
+        lastUploadAt: null,
         publishedAt,
         days,
         subscribers: subs,
@@ -1518,7 +1526,12 @@ async function onSearchChannels(q, apiKey) {
     displayChannels = [...allChannels];
     sortChannels();
     renderChannelResults();
-    showToast(`✅ ${allChannels.length}개 채널 검색됨`);
+    showToast(`✅ ${allChannels.length}개 채널 검색됨 · 최근 영상 로딩 중...`);
+
+    // 각 채널의 최근 영상 1개 fetch (병렬, ~50 units)
+    await fetchLatestVideosForChannels(allChannels, apiKey);
+    sortChannels();
+    renderChannelsTable();
   } catch (err) {
     console.error(err);
     showError(`채널 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
@@ -1527,13 +1540,42 @@ async function onSearchChannels(q, apiKey) {
   }
 }
 
+async function fetchLatestVideosForChannels(channels, apiKey) {
+  const promises = channels.map(async (c) => {
+    if (!c.uploadsPlaylistId) return;
+    try {
+      const data = await ytFetch('playlistItems', {
+        part: 'snippet,contentDetails',
+        playlistId: c.uploadsPlaylistId,
+        maxResults: 1,
+        key: apiKey,
+      });
+      const item = data.items?.[0];
+      if (!item) return;
+      const videoId = item.contentDetails?.videoId
+        || item.snippet?.resourceId?.videoId;
+      c.latestVideo = {
+        videoId,
+        title: decodeHtml(item.snippet.title),
+        thumbnail: item.snippet.thumbnails?.medium?.url
+          || item.snippet.thumbnails?.default?.url || '',
+        publishedAt: item.snippet.publishedAt,
+      };
+      c.lastUploadAt = item.snippet.publishedAt;
+    } catch (err) {
+      // 개별 실패 무시
+    }
+  });
+  await Promise.all(promises);
+}
+
 function sortChannels() {
   const { key, dir } = currentChannelSort;
   displayChannels.sort((a, b) => {
     let av, bv;
-    if (key === 'publishedAt') {
-      av = new Date(a.publishedAt).getTime();
-      bv = new Date(b.publishedAt).getTime();
+    if (key === 'publishedAt' || key === 'lastUploadAt') {
+      av = a[key] ? new Date(a[key]).getTime() : -Infinity;
+      bv = b[key] ? new Date(b[key]).getTime() : -Infinity;
     } else {
       av = a[key] ?? -Infinity;
       bv = b[key] ?? -Infinity;
@@ -1568,9 +1610,24 @@ function renderChannelsTable() {
     const country = c.country || '';
     const countryRegion = REGIONS.find(r => r.code === country);
     const flagEmoji = countryRegion ? countryRegion.flag : '';
+    // 최근 영상 썸네일
+    const latest = c.latestVideo;
+    const latestThumbHtml = latest && latest.thumbnail
+      ? `<a class="channel-latest-thumb" href="https://www.youtube.com/watch?v=${escapeHtml(latest.videoId)}" target="_blank" rel="noopener" title="${escapeHtml(latest.title)}">
+           <img src="${latest.thumbnail}" alt="" loading="lazy" />
+         </a>`
+      : `<div class="channel-latest-thumb-empty">로딩 중</div>`;
+    // 마지막 업로드일
+    const lastUpload = c.lastUploadAt
+      ? `<div class="last-upload-cell">
+           <span class="last-upload-date">${fmtDate(c.lastUploadAt)}</span>
+           <span class="last-upload-ago">${timeAgo(new Date(c.lastUploadAt).getTime())}</span>
+         </div>`
+      : `<div class="last-upload-cell"><span class="dash-text">-</span></div>`;
     return `
       <tr>
         <td class="cb"><input type="checkbox" data-channel-id="${escapeHtml(c.channelId)}" /></td>
+        <td class="channel-avatar-cell">${latestThumbHtml}</td>
         <td class="channel-avatar-cell">
           <div class="channel-avatar-wrap">
             <img class="channel-avatar" src="${c.thumbnail}" alt="" loading="lazy" />
@@ -1588,6 +1645,7 @@ function renderChannelsTable() {
         <td>${tierWithValue(c.growthSpeed, c.growthTier, 'v/일')}</td>
         <td class="num-cell">${fmtCompact(c.totalViews)}</td>
         <td class="num-cell">${fmtCompact(c.videoCount)}</td>
+        <td>${lastUpload}</td>
       </tr>
     `;
   }).join('');
@@ -2402,6 +2460,14 @@ function fmtCompact(n) {
   if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
   return String(n);
 }
+function fmtVPHShort(v) {
+  if (v === null || v === undefined || isNaN(v)) return '-';
+  if (v < 1) return v.toFixed(1);
+  if (v < 1000) return Math.round(v).toLocaleString();
+  if (v < 1e6) return (v/1000).toFixed(1) + 'k';
+  return (v/1e6).toFixed(1) + 'M';
+}
+
 function fmtVPH(v) {
   if (v === null || v === undefined || isNaN(v)) return '-';
   if (v < 1) return v.toFixed(2) + ' VPH';

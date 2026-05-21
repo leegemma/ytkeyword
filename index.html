@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -163,6 +163,7 @@
         <thead>
           <tr>
             <th class="cb"><input type="checkbox" id="selectAllChannels" /></th>
+            <th class="th-thumb">최근 영상</th>
             <th class="th-thumb">프로필</th>
             <th>채널명</th>
             <th class="sortable" data-csort="publishedAt">개설일</th>
@@ -173,6 +174,7 @@
             <th class="sortable" data-csort="growthSpeed" title="누적 조회수 ÷ 운영일">성장속도</th>
             <th class="sortable num" data-csort="totalViews">총 조회수</th>
             <th class="sortable num" data-csort="videoCount">총 영상</th>
+            <th class="sortable" data-csort="lastUploadAt" title="가장 최근 영상 업로드 날짜">마지막 업로드</th>
           </tr>
         </thead>
         <tbody id="channelsBody"></tbody>
@@ -369,21 +371,27 @@
             </div>
           </div>
 
-          <div class="stat-cards-grid">
-            <div class="stat-card stat-outlier">
-              <div class="stat-icon">🔥</div>
-              <div class="stat-value" id="statOutlier">-</div>
-              <div class="stat-label">Outlier Score</div>
+          <!-- Key metrics (VidIQ 스타일 pill) -->
+          <div class="key-metrics-row">
+            <div class="key-metric">
+              <div class="km-label">Engagement</div>
+              <div class="km-value" id="kmEngagement">-</div>
             </div>
+            <div class="key-metric km-highlight">
+              <div class="km-label">Outlier</div>
+              <div class="km-value" id="kmOutlier">-</div>
+            </div>
+            <div class="key-metric">
+              <div class="km-label">VPH</div>
+              <div class="km-value" id="kmVph">-</div>
+            </div>
+          </div>
+
+          <div class="stat-cards-grid">
             <div class="stat-card">
               <div class="stat-icon">👁</div>
               <div class="stat-value" id="statViews">-</div>
               <div class="stat-label">조회수</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">⏱</div>
-              <div class="stat-value" id="statVph">-</div>
-              <div class="stat-label">Views Per Hour</div>
             </div>
             <div class="stat-card">
               <div class="stat-icon">👍</div>
@@ -391,16 +399,31 @@
               <div class="stat-label">좋아요</div>
             </div>
             <div class="stat-card">
-              <div class="stat-icon">📊</div>
-              <div class="stat-value" id="statContribution">-</div>
-              <div class="stat-label">기여도</div>
+              <div class="stat-icon">💬</div>
+              <div class="stat-value" id="statComments">-</div>
+              <div class="stat-label">댓글</div>
             </div>
             <div class="stat-card">
-              <div class="stat-icon">💯</div>
-              <div class="stat-value" id="statEngagement">-</div>
-              <div class="stat-label">노출 확률</div>
+              <div class="stat-icon">📊</div>
+              <div class="stat-value" id="statContribution">-</div>
+              <div class="stat-label">기여도 (채널 평균 대비)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">📅</div>
+              <div class="stat-value" id="statDays">-</div>
+              <div class="stat-label">경과일</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">⏱</div>
+              <div class="stat-value" id="statDuration">-</div>
+              <div class="stat-label">재생시간</div>
             </div>
           </div>
+
+          <!-- Hidden legacy elements for backward compatibility -->
+          <span id="statOutlier" hidden></span>
+          <span id="statVph" hidden></span>
+          <span id="statEngagement" hidden></span>
 
           <section class="quick-actions-section">
             <h4>Quick Actions</h4>
@@ -692,6 +715,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=14"></script>
+  <script src="script.js?v=15"></script>
 </body>
 </html>

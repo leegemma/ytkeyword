@@ -1637,6 +1637,83 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   margin: 0 0 8px;
 }
 
+/* ────────────── Key metrics pills (VidIQ 스타일) ────────────── */
+.key-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.key-metric {
+  background: var(--bg-alt);
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  padding: 18px 16px;
+  text-align: center;
+}
+.key-metric.km-highlight {
+  background: linear-gradient(135deg, var(--green-soft), transparent);
+  border-color: var(--green-border);
+}
+.km-label {
+  font-size: 11px;
+  color: var(--gray-500);
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.km-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gray-900);
+  line-height: 1.1;
+}
+
+/* 채널 결과 - 최근 영상 썸네일 + 마지막 업로드 */
+.channel-latest-thumb {
+  position: relative;
+  width: 100px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--gray-100);
+  display: block;
+  margin: 0 auto;
+}
+.channel-latest-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.channel-latest-thumb-empty {
+  width: 100px;
+  height: 56px;
+  border-radius: 4px;
+  background: var(--gray-100);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-400);
+  font-size: 11px;
+}
+.last-upload-cell {
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+.last-upload-date {
+  color: var(--gray-700);
+  font-weight: 600;
+}
+.last-upload-ago {
+  display: block;
+  font-size: 10px;
+  color: var(--gray-400);
+  margin-top: 2px;
+}
+
 /* ────────────── Channel detail modal ────────────── */
 .cd-meta-row {
   display: flex;
