@@ -11,6 +11,10 @@ const LS_KEY_VIEW = 'ytkw:viewMode';
 const LS_KEY_SUMMARY = 'ytkw:summary:';
 const LS_KEY_BLOCKED_VIDEOS = 'ytkw:blockedVideos';
 const LS_KEY_BLOCKED_CHANNELS = 'ytkw:blockedChannels';
+const LS_KEY_FEATURES = 'ytkw:features';
+const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
+
+const DEFAULT_FEATURES = { summary: false };
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const $ = (id) => document.getElementById(id);
@@ -48,6 +52,11 @@ const selectedCount  = $('selectedCount');
 const blockListBtn   = $('blockListBtn');
 const blockListCount = $('blockListCount');
 const blockListModal = $('blockListModal');
+const featureBtn     = $('featureBtn');
+const featureModal   = $('featureModal');
+const savedListBtn   = $('savedListBtn');
+const savedListCount = $('savedListCount');
+const savedListModal = $('savedListModal');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -81,6 +90,18 @@ try {
   Object.keys(raw).forEach(id => blockedChannels.add(id));
 } catch {}
 
+let features = { ...DEFAULT_FEATURES };
+try {
+  Object.assign(features, JSON.parse(localStorage.getItem(LS_KEY_FEATURES) || '{}'));
+} catch {}
+
+let savedVideos = []; // [{ videoId, title, channelTitle, channelId, thumbnail, duration, viewCount, publishedAt, savedAt }]
+let savedVideoIds = new Set();
+try {
+  savedVideos = JSON.parse(localStorage.getItem(LS_KEY_SAVED_VIDEOS) || '[]');
+  savedVideos.forEach(v => savedVideoIds.add(v.videoId));
+} catch {}
+
 function freshFilters() {
   return {
     viewMin: null, viewMax: null,
@@ -99,10 +120,18 @@ function freshFilters() {
 function init() {
   bindEvents();
   applyViewModeButtonState();
+  applyFeatureFlags();
   updateBlockListButton();
+  updateSavedListButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
+}
+
+function applyFeatureFlags() {
+  Object.entries(features).forEach(([key, enabled]) => {
+    document.body.classList.toggle(`feat-${key}`, !!enabled);
+  });
 }
 
 function applyViewModeButtonState() {
@@ -168,6 +197,28 @@ function bindEvents() {
   // 차단 목록 모달
   blockListBtn.addEventListener('click', openBlockListModal);
   $('clearAllBlocksBtn').addEventListener('click', clearAllBlocks);
+
+  // 실험 기능 모달
+  featureBtn.addEventListener('click', openFeatureModal);
+  featureModal.querySelectorAll('input[type="checkbox"][data-feature-key]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      setFeature(cb.dataset.featureKey, cb.checked);
+    });
+  });
+
+  // 저장한 영상
+  savedListBtn.addEventListener('click', openSavedListModal);
+  $('clearAllSavedBtn').addEventListener('click', clearAllSaved);
+  // 저장 버튼 (테이블 + 카드 + mini-grid)
+  [tableWrap, cardGrid].forEach(c => {
+    c.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-save-id]');
+      if (!btn) return;
+      e.stopPropagation();
+      e.preventDefault();
+      toggleSave(btn.dataset.saveId);
+    });
+  });
 
   // 디테일 모달 탭 + 액션
   detailModal.querySelector('.detail-tabs').addEventListener('click', (e) => {
@@ -330,8 +381,8 @@ function setViewMode(mode) {
 
 /* ───────── 영상 디테일 모달 ───────── */
 function handleResultClick(e) {
-  // 요약 버튼/체크박스 클릭은 무시
-  if (e.target.closest('.summary-btn, input[type="checkbox"]')) return;
+  // 액션 버튼/체크박스 클릭은 무시
+  if (e.target.closest('.summary-btn, .save-btn, .card-save-btn, input[type="checkbox"]')) return;
   const trigger = e.target.closest('[data-detail-id]');
   if (!trigger) return;
   if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
@@ -907,6 +958,154 @@ function clearAllBlocks() {
   showToast('✅ 모든 차단 해제됨');
 }
 
+/* ───────── 실험 기능 ───────── */
+function openFeatureModal() {
+  featureModal.querySelectorAll('input[type="checkbox"][data-feature-key]').forEach(cb => {
+    cb.checked = !!features[cb.dataset.featureKey];
+  });
+  featureModal.classList.remove('hidden');
+}
+
+function setFeature(key, enabled) {
+  features[key] = !!enabled;
+  localStorage.setItem(LS_KEY_FEATURES, JSON.stringify(features));
+  applyFeatureFlags();
+  showToast(`${enabled ? '✅' : '⛔'} ${key} 기능 ${enabled ? '켬' : '끔'}`);
+}
+
+/* ───────── 저장한 영상 ───────── */
+function persistSaved() {
+  localStorage.setItem(LS_KEY_SAVED_VIDEOS, JSON.stringify(savedVideos));
+}
+
+function updateSavedListButton() {
+  if (savedVideoIds.size > 0) {
+    savedListBtn.hidden = false;
+    savedListCount.textContent = savedVideoIds.size;
+  } else {
+    savedListBtn.hidden = true;
+  }
+}
+
+function toggleSave(videoId) {
+  // 결과 목록에서 찾거나 savedVideos에서 찾기
+  const fromResults = allResults.find(r => r.videoId === videoId);
+  if (savedVideoIds.has(videoId)) {
+    // 저장 해제
+    savedVideoIds.delete(videoId);
+    savedVideos = savedVideos.filter(v => v.videoId !== videoId);
+    persistSaved();
+    updateSavedListButton();
+    // 표시 갱신
+    updateSaveButtons(videoId, false);
+    showToast('⭐ 저장 해제됨');
+    // 만약 저장 목록 모달이 열려있으면 다시 그려줌
+    if (!savedListModal.classList.contains('hidden')) renderSavedList();
+  } else {
+    // 저장
+    if (!fromResults) {
+      showToast('저장할 영상 정보를 찾을 수 없습니다');
+      return;
+    }
+    const entry = {
+      videoId: fromResults.videoId,
+      title: fromResults.title,
+      channelTitle: fromResults.channelTitle,
+      channelId: fromResults.channelId,
+      thumbnail: fromResults.thumbnail,
+      duration: fromResults.duration,
+      viewCount: fromResults.viewCount,
+      publishedAt: fromResults.publishedAt,
+      savedAt: Date.now(),
+    };
+    savedVideos.unshift(entry);
+    savedVideoIds.add(videoId);
+    persistSaved();
+    updateSavedListButton();
+    updateSaveButtons(videoId, true);
+    showToast('⭐ 저장됨 — 우상단에서 다시 볼 수 있어요');
+  }
+}
+
+function updateSaveButtons(videoId, isSaved) {
+  // 테이블 셀의 save-btn
+  document.querySelectorAll(`.save-btn[data-save-id="${CSS.escape(videoId)}"]`).forEach(b => {
+    b.classList.toggle('saved', isSaved);
+    b.textContent = isSaved ? '★' : '☆';
+    b.title = isSaved ? '저장 해제' : '저장';
+  });
+  // 카드의 card-save-btn
+  document.querySelectorAll(`.card-save-btn[data-save-id="${CSS.escape(videoId)}"]`).forEach(b => {
+    b.classList.toggle('saved', isSaved);
+    b.textContent = isSaved ? '★' : '☆';
+    b.title = isSaved ? '저장 해제' : '저장';
+  });
+  // 카드 썸네일의 saved-badge
+  if (viewMode === 'cards') {
+    const card = document.querySelector(`.card-thumb[data-detail-id="${CSS.escape(videoId)}"]`);
+    if (card) {
+      const existing = card.querySelector('.saved-badge');
+      if (isSaved && !existing) {
+        const span = document.createElement('span');
+        span.className = 'saved-badge';
+        span.textContent = '⭐ 저장됨';
+        card.appendChild(span);
+      } else if (!isSaved && existing) {
+        existing.remove();
+      }
+    }
+  }
+}
+
+function openSavedListModal() {
+  renderSavedList();
+  savedListModal.classList.remove('hidden');
+}
+
+function renderSavedList() {
+  const grid = $('savedListGrid');
+  $('savedListHint').textContent = savedVideos.length
+    ? `저장한 영상 ${savedVideos.length}개 — 카드 클릭 시 YouTube로 이동, 별 표시로 저장 해제`
+    : '아직 저장한 영상이 없습니다. 검색 결과의 ☆ 버튼을 눌러 저장하세요.';
+  if (!savedVideos.length) {
+    grid.innerHTML = '';
+    return;
+  }
+  grid.innerHTML = savedVideos.map(v => `
+    <div class="mini-card" style="position:relative">
+      <a class="mini-thumb" href="https://www.youtube.com/watch?v=${v.videoId}" target="_blank" rel="noopener" style="display:block">
+        <img src="${v.thumbnail}" alt="" loading="lazy" />
+        ${v.duration ? `<span class="duration-overlay">${v.duration}</span>` : ''}
+      </a>
+      <div class="mini-info">
+        <h5>${escapeHtml(v.title)}</h5>
+        <div class="mini-meta">${escapeHtml(v.channelTitle)} · ${fmtCompact(v.viewCount || 0)} views</div>
+      </div>
+      <button class="card-save-btn saved" data-saved-remove="${escapeHtml(v.videoId)}" type="button" title="저장 해제" style="top:6px; right:6px">★</button>
+    </div>
+  `).join('');
+  // unsave 핸들러
+  grid.querySelectorAll('[data-saved-remove]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSave(b.dataset.savedRemove);
+    });
+  });
+}
+
+function clearAllSaved() {
+  if (!confirm(`저장한 영상 ${savedVideos.length}개를 모두 삭제하시겠습니까?`)) return;
+  const ids = savedVideos.map(v => v.videoId);
+  savedVideos = [];
+  savedVideoIds.clear();
+  persistSaved();
+  updateSavedListButton();
+  ids.forEach(id => updateSaveButtons(id, false));
+  savedListModal.classList.add('hidden');
+  showToast('🗑 저장 목록 비움');
+}
+
 /* ───────── 테마 ───────── */
 function toggleTheme() {
   const current = document.documentElement.dataset.theme;
@@ -1197,9 +1396,12 @@ function renderTable() {
       <td>
         <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">${escapeHtml(r.title)}</a>
       </td>
-      <td style="text-align:center">
-        <button class="summary-btn ${hasCachedSummary(r.videoId) ? 'has-cache' : ''}" data-summary-id="${r.videoId}" type="button" title="${hasCachedSummary(r.videoId) ? '저장된 요약 보기' : 'Gemini로 영상 요약'}">
-          ✨ ${hasCachedSummary(r.videoId) ? '요약' : '요약'}
+      <td class="cell-actions">
+        <button class="save-btn ${savedVideoIds.has(r.videoId) ? 'saved' : ''}" data-save-id="${r.videoId}" type="button" title="${savedVideoIds.has(r.videoId) ? '저장 해제' : '저장'}">
+          ${savedVideoIds.has(r.videoId) ? '★' : '☆'}
+        </button>
+        <button class="summary-btn ${hasCachedSummary(r.videoId) ? 'has-cache' : ''}" data-summary-id="${r.videoId}" data-feature="summary" type="button" title="Gemini로 영상 요약">
+          ✨
         </button>
       </td>
       <td class="num-cell">${fmt(r.viewCount)}</td>
@@ -1224,6 +1426,7 @@ function renderCards() {
       <a class="card-thumb" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">
         <img src="${r.thumbnail}" alt="" loading="lazy" />
         ${multiplierBadge(r.performance)}
+        ${savedVideoIds.has(r.videoId) ? '<span class="saved-badge">⭐ 저장됨</span>' : ''}
         <span class="vph-pill">${fmtVPH(r.vph)}</span>
         ${r.duration ? `<span class="duration-overlay">${r.duration}</span>` : ''}
       </a>
@@ -1231,6 +1434,9 @@ function renderCards() {
         <h3 class="card-title">${escapeHtml(r.title)}</h3>
         <div class="card-channel" title="${escapeHtml(r.channelTitle)}">${escapeHtml(r.channelTitle)} · 구독자 ${fmtCompact(r.subscriberCount)}</div>
         <div class="card-meta">${fmtCompact(r.viewCount)} views · ${fmtDate(r.publishedAt)}</div>
+        <button class="card-save-btn ${savedVideoIds.has(r.videoId) ? 'saved' : ''}" data-save-id="${r.videoId}" type="button" title="${savedVideoIds.has(r.videoId) ? '저장 해제' : '저장'}">
+          ${savedVideoIds.has(r.videoId) ? '★' : '☆'}
+        </button>
       </div>
     </article>
   `).join('');
