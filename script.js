@@ -9,6 +9,8 @@ const LS_KEY_HISTORY = 'ytkw:history';
 const LS_KEY_THEME = 'ytkw:theme';
 const LS_KEY_VIEW = 'ytkw:viewMode';
 const LS_KEY_SUMMARY = 'ytkw:summary:';
+const LS_KEY_BLOCKED_VIDEOS = 'ytkw:blockedVideos';
+const LS_KEY_BLOCKED_CHANNELS = 'ytkw:blockedChannels';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const $ = (id) => document.getElementById(id);
@@ -41,6 +43,11 @@ const summaryContent = $('summaryContent');
 const summaryCopyBtn = $('summaryCopyBtn');
 const summaryRegenBtn = $('summaryRegenBtn');
 const geminiKeyInput = $('geminiKeyInput');
+const bulkActions    = $('bulkActions');
+const selectedCount  = $('selectedCount');
+const blockListBtn   = $('blockListBtn');
+const blockListCount = $('blockListCount');
+const blockListModal = $('blockListModal');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -61,6 +68,15 @@ let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
 let activePreset = null;
 let currentDetail = null; // { result, recent, popular }
 let currentSummaryVideo = null;
+let selectedIds = new Set();
+let blockedVideos = new Set(JSON.parse(localStorage.getItem(LS_KEY_BLOCKED_VIDEOS) || '[]'));
+let blockedChannels = new Set(); // { id: name } 매핑은 별도
+let blockedChannelMap = {};
+try {
+  const raw = JSON.parse(localStorage.getItem(LS_KEY_BLOCKED_CHANNELS) || '{}');
+  blockedChannelMap = raw;
+  Object.keys(raw).forEach(id => blockedChannels.add(id));
+} catch {}
 
 function freshFilters() {
   return {
@@ -80,6 +96,7 @@ function freshFilters() {
 function init() {
   bindEvents();
   applyViewModeButtonState();
+  updateBlockListButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
@@ -138,6 +155,16 @@ function bindEvents() {
   });
   summaryCopyBtn.addEventListener('click', copySummary);
   summaryRegenBtn.addEventListener('click', regenerateSummary);
+
+  // 체크박스 (델리게이트)
+  tableWrap.addEventListener('change', handleCheckboxChange);
+  // bulk 액션
+  $('blockVideosBtn').addEventListener('click', blockSelectedVideos);
+  $('blockChannelsBtn').addEventListener('click', blockSelectedChannels);
+  $('clearSelectionBtn').addEventListener('click', clearSelection);
+  // 차단 목록 모달
+  blockListBtn.addEventListener('click', openBlockListModal);
+  $('clearAllBlocksBtn').addEventListener('click', clearAllBlocks);
 
   // 디테일 모달 탭 + 액션
   detailModal.querySelector('.detail-tabs').addEventListener('click', (e) => {
@@ -692,6 +719,143 @@ function copySummary() {
   showToast('📋 요약 복사됨');
 }
 
+/* ───────── 다중 선택 + 차단 ───────── */
+function handleCheckboxChange(e) {
+  const cb = e.target;
+  if (cb.type !== 'checkbox') return;
+  if (cb.id === 'selectAll') {
+    const all = resultsBody.querySelectorAll('input[type="checkbox"][data-id]');
+    all.forEach(c => {
+      c.checked = cb.checked;
+      if (cb.checked) selectedIds.add(c.dataset.id);
+      else selectedIds.delete(c.dataset.id);
+    });
+  } else if (cb.dataset.id) {
+    if (cb.checked) selectedIds.add(cb.dataset.id);
+    else selectedIds.delete(cb.dataset.id);
+    // selectAll 동기화
+    const sa = $('selectAll');
+    if (sa) {
+      const all = resultsBody.querySelectorAll('input[type="checkbox"][data-id]');
+      sa.checked = all.length > 0 && [...all].every(c => c.checked);
+    }
+  }
+  updateBulkActions();
+}
+
+function updateBulkActions() {
+  const n = selectedIds.size;
+  if (n > 0) {
+    bulkActions.classList.remove('hidden');
+    selectedCount.textContent = n;
+  } else {
+    bulkActions.classList.add('hidden');
+  }
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  resultsBody.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = false);
+  updateBulkActions();
+}
+
+function blockSelectedVideos() {
+  if (!selectedIds.size) return;
+  const ids = [...selectedIds];
+  ids.forEach(id => blockedVideos.add(id));
+  persistBlocks();
+  selectedIds.clear();
+  // 현재 결과에서 제거
+  allResults = allResults.filter(r => !blockedVideos.has(r.videoId));
+  displayResults = applyFiltersToArray(allResults);
+  sortResults();
+  renderResults();
+  updateBulkActions();
+  updateBlockListButton();
+  showToast(`🗑 ${ids.length}개 영상 차단 — 다음 검색에서도 안 보입니다`);
+}
+
+function blockSelectedChannels() {
+  if (!selectedIds.size) return;
+  const channels = new Map();
+  [...selectedIds].forEach(id => {
+    const r = allResults.find(x => x.videoId === id);
+    if (r) channels.set(r.channelId, r.channelTitle);
+  });
+  if (!channels.size) return;
+  channels.forEach((name, id) => {
+    blockedChannels.add(id);
+    blockedChannelMap[id] = name;
+  });
+  persistBlocks();
+  selectedIds.clear();
+  allResults = allResults.filter(r => !blockedChannels.has(r.channelId));
+  displayResults = applyFiltersToArray(allResults);
+  sortResults();
+  renderResults();
+  updateBulkActions();
+  updateBlockListButton();
+  showToast(`🚫 ${channels.size}개 채널 차단 (해당 채널의 모든 영상 숨김)`);
+}
+
+function persistBlocks() {
+  localStorage.setItem(LS_KEY_BLOCKED_VIDEOS, JSON.stringify([...blockedVideos]));
+  localStorage.setItem(LS_KEY_BLOCKED_CHANNELS, JSON.stringify(blockedChannelMap));
+}
+
+function updateBlockListButton() {
+  const total = blockedVideos.size + blockedChannels.size;
+  if (total > 0) {
+    blockListBtn.hidden = false;
+    blockListCount.textContent = total;
+  } else {
+    blockListBtn.hidden = true;
+  }
+}
+
+function openBlockListModal() {
+  $('blockedVideoCount').textContent = blockedVideos.size;
+  $('blockedChannelCount').textContent = blockedChannels.size;
+  // 차단된 채널 목록 (이름 있으니까)
+  const listEl = $('blockedChannelList');
+  if (blockedChannels.size === 0) {
+    listEl.innerHTML = '';
+  } else {
+    listEl.innerHTML = [...blockedChannels].map(id => {
+      const name = blockedChannelMap[id] || id;
+      return `
+        <div class="blocked-item" data-channel-id="${escapeHtml(id)}">
+          <span class="blocked-label">🚫 ${escapeHtml(name)}</span>
+          <button class="unblock-btn" data-unblock="${escapeHtml(id)}">해제</button>
+        </div>
+      `;
+    }).join('');
+    // unblock 핸들러
+    listEl.querySelectorAll('.unblock-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = b.dataset.unblock;
+        blockedChannels.delete(id);
+        delete blockedChannelMap[id];
+        persistBlocks();
+        updateBlockListButton();
+        openBlockListModal();
+      });
+    });
+  }
+  blockListModal.classList.remove('hidden');
+}
+
+function clearAllBlocks() {
+  if (!confirm('차단된 영상과 채널을 모두 해제하시겠습니까?')) return;
+  blockedVideos.clear();
+  blockedChannels.clear();
+  blockedChannelMap = {};
+  persistBlocks();
+  updateBlockListButton();
+  blockListModal.classList.add('hidden');
+  showToast('✅ 모든 차단 해제됨');
+}
+
 /* ───────── 테마 ───────── */
 function toggleTheme() {
   const current = document.documentElement.dataset.theme;
@@ -769,7 +933,14 @@ async function onSearch() {
     const detailMap = mapBy(videoStats, 'id');
     const channelMap = mapBy(channelStats, 'id');
 
-    allResults = videos.map(v => {
+    allResults = videos.filter(v => {
+      // 차단된 영상/채널 제외
+      const vid = v.id?.videoId;
+      const cid = v.snippet?.channelId;
+      if (vid && blockedVideos.has(vid)) return false;
+      if (cid && blockedChannels.has(cid)) return false;
+      return true;
+    }).map(v => {
       const d = detailMap[v.id.videoId] || {};
       const c = channelMap[v.snippet.channelId] || {};
       const subs = num(c.statistics?.subscriberCount);
@@ -958,7 +1129,7 @@ function renderResults() {
 function renderTable() {
   resultsBody.innerHTML = displayResults.map((r) => `
     <tr data-detail-id="${r.videoId}">
-      <td class="cb"><input type="checkbox" data-id="${r.videoId}" /></td>
+      <td class="cb"><input type="checkbox" data-id="${r.videoId}" ${selectedIds.has(r.videoId) ? 'checked' : ''} /></td>
       <td>
         <div class="thumb-cell" data-detail-id="${r.videoId}">
           <img src="${r.thumbnail}" alt="" loading="lazy" />

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -104,6 +104,10 @@
       <button class="preset-chip" data-preset="shortsOnly" title="Shorts만 보기">📱 Shorts</button>
       <button class="preset-chip" data-preset="shortsRemove" title="Shorts 제외">🚫 No Shorts</button>
     </div>
+    <button class="ghost-btn" id="blockListBtn" title="차단 목록" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+      <span id="blockListCount">0</span>
+    </button>
     <div class="view-toggle" id="viewToggle">
       <button class="view-mode-btn active" data-view="table" title="목록 보기">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -115,6 +119,20 @@
       </button>
     </div>
   </section>
+
+  <!-- Bulk actions (선택했을 때 노출) -->
+  <div id="bulkActions" class="bulk-actions hidden">
+    <span class="bulk-count">
+      ✓ <span id="selectedCount">0</span>개 선택됨
+    </span>
+    <button class="bulk-btn" id="blockVideosBtn" title="선택한 영상을 차단 목록에 추가 (영구)">
+      🗑 영상 제거
+    </button>
+    <button class="bulk-btn" id="blockChannelsBtn" title="선택한 영상의 채널 전체를 차단 (해당 채널 모든 영상 안 보임)">
+      🚫 채널 제거
+    </button>
+    <button class="bulk-btn ghost" id="clearSelectionBtn">선택 해제</button>
+  </div>
 
   <!-- Results -->
   <main class="results">
@@ -446,8 +464,39 @@
     </div>
   </div>
 
+  <!-- Block list modal -->
+  <div id="blockListModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel">
+      <header class="modal-head">
+        <h2>🚫 차단 목록</h2>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="hint">
+          여기 차단된 영상/채널은 <strong>새 검색 결과에서도 자동으로 숨겨집니다</strong>.
+        </p>
+        <div class="block-stats">
+          <div class="block-stat">
+            <div class="block-stat-value" id="blockedVideoCount">0</div>
+            <div class="block-stat-label">차단된 영상</div>
+          </div>
+          <div class="block-stat">
+            <div class="block-stat-value" id="blockedChannelCount">0</div>
+            <div class="block-stat-label">차단된 채널</div>
+          </div>
+        </div>
+        <div id="blockedChannelList" class="blocked-list"></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="link-btn" id="clearAllBlocksBtn">전체 차단 해제</button>
+        <button class="primary-btn" data-close>닫기</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=5"></script>
+  <script src="script.js?v=6"></script>
 </body>
 </html>
