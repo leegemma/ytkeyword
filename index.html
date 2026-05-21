@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -95,6 +95,27 @@
     </label>
   </section>
 
+  <!-- Result controls (preset chips + view toggle) -->
+  <section class="results-controls" id="resultsControls" hidden>
+    <div class="preset-chips" id="presetChips">
+      <button class="preset-chip" data-preset="outliers" title="구독자 대비 조회수 높은 영상">🔥 Outliers</button>
+      <button class="preset-chip" data-preset="trending" title="시간당 조회수 높은 영상">📈 Trending</button>
+      <button class="preset-chip" data-preset="latest" title="최근 게시 순">🕐 Latest</button>
+      <button class="preset-chip" data-preset="shortsOnly" title="Shorts만 보기">📱 Shorts</button>
+      <button class="preset-chip" data-preset="shortsRemove" title="Shorts 제외">🚫 No Shorts</button>
+    </div>
+    <div class="view-toggle" id="viewToggle">
+      <button class="view-mode-btn active" data-view="table" title="목록 보기">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        List
+      </button>
+      <button class="view-mode-btn" data-view="cards" title="카드 보기">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Cards
+      </button>
+    </div>
+  </section>
+
   <!-- Results -->
   <main class="results">
     <div class="progress-bar" id="progressBar"></div>
@@ -105,6 +126,8 @@
       <p class="muted-small">API 키 미설정 시 우상단 "API 키"로 먼저 등록해주세요.</p>
     </div>
 
+    <div class="card-grid" id="cardGrid" hidden></div>
+
     <div class="table-wrap" id="tableWrap" hidden>
       <table class="results-table">
         <thead>
@@ -113,6 +136,7 @@
             <th class="th-thumb">썸네일 <span class="thumb-count" id="thumbCount"></span></th>
             <th class="th-title">제목</th>
             <th class="sortable num" data-sort="viewCount">조회수</th>
+            <th class="sortable num" data-sort="vph" title="Views Per Hour (시간당 조회수)">VPH</th>
             <th class="sortable num" data-sort="subscriberCount">구독자</th>
             <th class="sortable" data-sort="contribution">기여도</th>
             <th class="sortable" data-sort="performance">성과도</th>
@@ -258,6 +282,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>

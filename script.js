@@ -6,6 +6,7 @@
 const LS_KEY_API = 'ytkw:apiKey';
 const LS_KEY_HISTORY = 'ytkw:history';
 const LS_KEY_THEME = 'ytkw:theme';
+const LS_KEY_VIEW = 'ytkw:viewMode';
 
 const $ = (id) => document.getElementById(id);
 
@@ -28,6 +29,8 @@ const filterResultCount = $('filterResultCount');
 const resultsBody    = $('resultsBody');
 const emptyState     = $('emptyState');
 const tableWrap      = $('tableWrap');
+const cardGrid       = $('cardGrid');
+const resultsControls = $('resultsControls');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -40,10 +43,12 @@ const periodEl       = $('period');
 const regionEl       = $('region');
 
 /* State */
-let allResults = [];      // 검색 후 받은 전체 결과
-let displayResults = []; // 필터 적용된 표시용
+let allResults = [];
+let displayResults = [];
 let currentSort = { key: 'performance', dir: 'desc' };
 let filters = freshFilters();
+let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
+let activePreset = null;
 
 function freshFilters() {
   return {
@@ -62,9 +67,16 @@ function freshFilters() {
 /* ───────── 초기화 ───────── */
 function init() {
   bindEvents();
+  applyViewModeButtonState();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
+}
+
+function applyViewModeButtonState() {
+  document.querySelectorAll('.view-mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === viewMode);
+  });
 }
 
 function bindEvents() {
@@ -88,6 +100,15 @@ function bindEvents() {
   filterResetBtn.addEventListener('click', resetFilters);
 
   exportCsvBtn.addEventListener('click', exportCsv);
+
+  // 프리셋 칩
+  document.querySelectorAll('.preset-chip').forEach(b => {
+    b.addEventListener('click', () => applyPreset(b.dataset.preset));
+  });
+  // 뷰 모드 토글
+  document.querySelectorAll('.view-mode-btn').forEach(b => {
+    b.addEventListener('click', () => setViewMode(b.dataset.view));
+  });
 
   // Modal close
   document.querySelectorAll('[data-close]').forEach((el) => {
@@ -165,6 +186,54 @@ function bindEvents() {
       updateFilterPreviewCount();
     });
   });
+}
+
+/* ───────── 프리셋 칩 + 뷰 토글 ───────── */
+function applyPreset(preset) {
+  // Shorts 토글은 별도 처리 (상태 토글 방식)
+  if (preset === 'shortsOnly' || preset === 'shortsRemove') {
+    const isActive = filters[preset];
+    filters[preset] = !isActive;
+    if (filters.shortsOnly && filters.shortsRemove) {
+      // 둘 동시 활성 금지
+      filters[preset === 'shortsOnly' ? 'shortsRemove' : 'shortsOnly'] = false;
+    }
+    refreshPresetChips();
+    displayResults = applyFiltersToArray(allResults);
+    sortResults();
+    renderResults();
+    return;
+  }
+  // 정렬 프리셋
+  if (preset === 'outliers') {
+    sortOrderEl.value = 'performance';
+    currentSort = { key: 'performance', dir: 'desc' };
+  } else if (preset === 'trending') {
+    currentSort = { key: 'vph', dir: 'desc' };
+  } else if (preset === 'latest') {
+    sortOrderEl.value = 'date';
+    currentSort = { key: 'publishedAt', dir: 'desc' };
+  }
+  activePreset = preset;
+  refreshPresetChips();
+  sortResults();
+  renderResults();
+}
+
+function refreshPresetChips() {
+  document.querySelectorAll('.preset-chip').forEach(b => {
+    const p = b.dataset.preset;
+    if (p === 'shortsOnly') b.classList.toggle('active', !!filters.shortsOnly);
+    else if (p === 'shortsRemove') b.classList.toggle('active', !!filters.shortsRemove);
+    else b.classList.toggle('active', activePreset === p);
+  });
+}
+
+function setViewMode(mode) {
+  viewMode = mode;
+  localStorage.setItem(LS_KEY_VIEW, mode);
+  applyViewModeButtonState();
+  if (displayResults.length) renderResults();
 }
 
 /* ───────── 테마 ───────── */
@@ -247,6 +316,8 @@ async function onSearch() {
       const channelViews = num(c.statistics?.viewCount);
       const channelVideoCount = num(c.statistics?.videoCount);
       const days = daysSince(v.snippet.publishedAt);
+      const hours = Math.max(1, (Date.now() - new Date(v.snippet.publishedAt).getTime()) / 3600000);
+      const vph = views / hours;
 
       const performance = subs > 0 ? views / subs : null;
       const recentPerformance = performance !== null && days > 0 ? performance / days : null;
@@ -272,6 +343,8 @@ async function onSearch() {
         channelViewCount: channelViews,
         channelVideoCount,
         days,
+        hours,
+        vph,
         performance,
         recentPerformance,
         contribution,
@@ -366,12 +439,12 @@ function onSort(key) {
 
 function sortResults() {
   const { key, dir } = currentSort;
-  const tierOrder = { worst: 0, bad: 1, normal: 2, good: 3, great: 4, null: -1, undefined: -1 };
   displayResults.sort((a, b) => {
     let av, bv;
     if (key === 'contribution') { av = a.contribution ?? -Infinity; bv = b.contribution ?? -Infinity; }
     else if (key === 'performance') { av = a.performance ?? -Infinity; bv = b.performance ?? -Infinity; }
     else if (key === 'exposure') { av = a.exposure ?? -Infinity; bv = b.exposure ?? -Infinity; }
+    else if (key === 'vph') { av = a.vph ?? -Infinity; bv = b.vph ?? -Infinity; }
     else if (key === 'publishedAt') { av = new Date(a.publishedAt).getTime(); bv = new Date(b.publishedAt).getTime(); }
     else { av = a[key] ?? -Infinity; bv = b[key] ?? -Infinity; }
     return dir === 'desc' ? bv - av : av - bv;
@@ -386,9 +459,12 @@ function sortResults() {
 /* ───────── 렌더링 ───────── */
 function renderResults() {
   resultCountEl.textContent = `${displayResults.length}개`;
-  thumbCount.textContent = `(${displayResults.length})`;
+  if (thumbCount) thumbCount.textContent = `(${displayResults.length})`;
+
   if (!displayResults.length) {
     tableWrap.hidden = true;
+    cardGrid.hidden = true;
+    resultsControls.hidden = true;
     emptyState.hidden = false;
     if (allResults.length) {
       emptyState.querySelector('p').textContent = '필터 조건에 맞는 결과가 없습니다.';
@@ -396,8 +472,20 @@ function renderResults() {
     return;
   }
   emptyState.hidden = true;
-  tableWrap.hidden = false;
+  resultsControls.hidden = false;
 
+  if (viewMode === 'cards') {
+    tableWrap.hidden = true;
+    cardGrid.hidden = false;
+    renderCards();
+  } else {
+    cardGrid.hidden = true;
+    tableWrap.hidden = false;
+    renderTable();
+  }
+}
+
+function renderTable() {
   resultsBody.innerHTML = displayResults.map((r) => `
     <tr>
       <td class="cb"><input type="checkbox" data-id="${r.videoId}" /></td>
@@ -411,23 +499,66 @@ function renderResults() {
         <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
       </td>
       <td class="num-cell">${fmt(r.viewCount)}</td>
+      <td class="num-cell">${fmtVPH(r.vph)}</td>
       <td class="channel-cell">
         ${fmt(r.subscriberCount)}
         <span class="channel-name" title="${escapeHtml(r.channelTitle)}">${escapeHtml(r.channelTitle)}</span>
       </td>
-      <td>${tierBadge(r.contributionTier)}</td>
-      <td>${tierBadge(r.performanceTier)}</td>
-      <td>${tierBadge(r.exposureTier)}</td>
+      <td>${multBadgeCell(r.contribution, r.contributionTier, 'x')}</td>
+      <td>${multBadgeCell(r.performance, r.performanceTier, 'x')}</td>
+      <td>${multBadgeCell(r.exposure, r.exposureTier, '%')}</td>
       <td class="num-cell">${fmt(r.channelVideoCount)}</td>
       <td class="num-cell">${fmtDate(r.publishedAt)}</td>
     </tr>
   `).join('');
 }
 
-function tierBadge(tier) {
-  if (!tier) return `<span class="dash-text">-</span>`;
-  const labels = { worst: 'Worst', bad: 'Bad', normal: 'Normal', good: 'Good', great: 'Great' };
-  return `<span class="tier ${tier} tier-text">${labels[tier]}</span>`;
+function renderCards() {
+  cardGrid.innerHTML = displayResults.map((r) => `
+    <article class="result-card">
+      <a class="card-thumb" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener">
+        <img src="${r.thumbnail}" alt="" loading="lazy" />
+        ${multiplierBadge(r.performance)}
+        <span class="vph-pill">${fmtVPH(r.vph)}</span>
+        ${r.duration ? `<span class="duration-overlay">${r.duration}</span>` : ''}
+      </a>
+      <div class="card-info">
+        <h3 class="card-title">${escapeHtml(r.title)}</h3>
+        <div class="card-channel" title="${escapeHtml(r.channelTitle)}">${escapeHtml(r.channelTitle)} · 구독자 ${fmtCompact(r.subscriberCount)}</div>
+        <div class="card-meta">${fmtCompact(r.viewCount)} views · ${fmtDate(r.publishedAt)}</div>
+      </div>
+    </article>
+  `).join('');
+}
+
+function multTier(val) {
+  if (val === null || val === undefined || isNaN(val)) return 'minimal';
+  if (val >= 100) return 'extreme';
+  if (val >= 10) return 'high';
+  if (val >= 3) return 'mid';
+  if (val >= 1) return 'low';
+  return 'minimal';
+}
+
+function multiplierBadge(val) {
+  if (val === null || val === undefined || isNaN(val)) return '';
+  const tier = multTier(val);
+  const label = val >= 100 ? '>100x' : (val >= 10 ? Math.round(val) + 'x' : val.toFixed(1) + 'x');
+  return `<span class="mult-badge mult-${tier}">${label}</span>`;
+}
+
+function multBadgeCell(val, tier, suffix) {
+  if (val === null || val === undefined || isNaN(val)) return `<span class="dash-text">-</span>`;
+  let label;
+  if (suffix === 'x') {
+    label = val >= 100 ? '>100x' : (val >= 10 ? Math.round(val) + 'x' : val.toFixed(1) + 'x');
+  } else if (suffix === '%') {
+    label = val.toFixed(1) + '%';
+  } else {
+    label = String(val);
+  }
+  const t = tier || multTier(val);
+  return `<span class="mult-badge mult-inline mult-${t}">${label}</span>`;
 }
 
 /* ───────── 필터 ───────── */
@@ -507,6 +638,7 @@ function resetFilters() {
   document.querySelectorAll('.quick-period button').forEach(b => b.classList.remove('active'));
   document.querySelector('.quick-period button[data-days=""]')?.classList.add('active');
   ['viewMin','viewMax','subMin','subMax','likeMin','likeMax','dateMin','dateMax'].forEach(id => { $(id).value = ''; });
+  refreshPresetChips();
   updateFilterPreviewCount();
 }
 
@@ -549,7 +681,7 @@ function renderHistory() {
 /* ───────── CSV 내보내기 ───────── */
 function exportCsv() {
   if (!displayResults.length) { showToast('내보낼 결과가 없습니다'); return; }
-  const headers = ['순위','제목','채널명','구독자','채널 총 영상수','채널 총 조회수','조회수','좋아요','댓글','성과 배수','최신 성과도','기여도(배)','노출확률(%)','경과일','재생시간','게시일','영상 링크','채널 링크'];
+  const headers = ['순위','제목','채널명','구독자','채널 총 영상수','채널 총 조회수','조회수','VPH','좋아요','댓글','성과 배수','최신 성과도','기여도(배)','노출확률(%)','경과일','재생시간','게시일','영상 링크','채널 링크'];
   const rows = displayResults.map((r, i) => [
     i + 1,
     r.title,
@@ -558,6 +690,7 @@ function exportCsv() {
     r.channelVideoCount,
     r.channelViewCount,
     r.viewCount,
+    r.vph?.toFixed(2) ?? '',
     r.likeCount,
     r.commentCount,
     r.performance?.toFixed(2) ?? '',
@@ -593,6 +726,14 @@ function fmtCompact(n) {
   if (n >= 1e4) return (n/1e4).toFixed(1) + '만';
   if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
   return String(n);
+}
+function fmtVPH(v) {
+  if (v === null || v === undefined || isNaN(v)) return '-';
+  if (v < 1) return v.toFixed(2) + ' VPH';
+  if (v < 10) return v.toFixed(1) + ' VPH';
+  if (v < 1000) return Math.round(v) + ' VPH';
+  if (v < 1e6) return (v/1000).toFixed(1) + 'k VPH';
+  return (v/1e6).toFixed(1) + 'M VPH';
 }
 function fmtDate(iso) {
   const d = new Date(iso);
