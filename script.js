@@ -66,6 +66,8 @@ let currentSort = { key: 'performance', dir: 'desc' };
 let filters = freshFilters();
 let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
 let activePreset = null;
+let savedSortBeforePreset = null;
+let savedSortOrderBeforePreset = null;
 let currentDetail = null; // { result, recent, popular }
 let currentSummaryVideo = null;
 let selectedIds = new Set();
@@ -256,12 +258,11 @@ function bindEvents() {
 
 /* ───────── 프리셋 칩 + 뷰 토글 ───────── */
 function applyPreset(preset) {
-  // Shorts 토글은 별도 처리 (상태 토글 방식)
+  // Shorts 토글은 별도 처리 (필터 상태 토글)
   if (preset === 'shortsOnly' || preset === 'shortsRemove') {
-    const isActive = filters[preset];
-    filters[preset] = !isActive;
+    const wasActive = filters[preset];
+    filters[preset] = !wasActive;
     if (filters.shortsOnly && filters.shortsRemove) {
-      // 둘 동시 활성 금지
       filters[preset === 'shortsOnly' ? 'shortsRemove' : 'shortsOnly'] = false;
     }
     refreshPresetChips();
@@ -270,7 +271,31 @@ function applyPreset(preset) {
     renderResults();
     return;
   }
-  // 정렬 프리셋
+
+  // 정렬 프리셋 (outliers / trending / latest)
+  // 같은 칩 다시 누름 → 해제 + 이전 정렬로 복원
+  if (activePreset === preset) {
+    activePreset = null;
+    if (savedSortBeforePreset) {
+      currentSort = savedSortBeforePreset;
+      savedSortBeforePreset = null;
+    }
+    if (savedSortOrderBeforePreset !== null) {
+      sortOrderEl.value = savedSortOrderBeforePreset;
+      savedSortOrderBeforePreset = null;
+    }
+    refreshPresetChips();
+    sortResults();
+    renderResults();
+    return;
+  }
+
+  // 첫 활성화 시점에만 이전 상태 저장 (프리셋 간 전환 시 prev는 그대로 유지)
+  if (!activePreset) {
+    savedSortBeforePreset = { ...currentSort };
+    savedSortOrderBeforePreset = sortOrderEl.value;
+  }
+
   if (preset === 'outliers') {
     sortOrderEl.value = 'performance';
     currentSort = { key: 'performance', dir: 'desc' };
@@ -405,7 +430,7 @@ async function loadChannelRecent() {
       const s = statsMap[id] || {};
       return {
         videoId: id,
-        title: it.snippet.title,
+        title: decodeHtml(it.snippet.title),
         thumbnail: it.snippet.thumbnails?.medium?.url
           || it.snippet.thumbnails?.default?.url || '',
         viewCount: num(s.statistics?.viewCount),
@@ -443,7 +468,7 @@ async function loadChannelPopular() {
       const s = statsMap[v.id.videoId] || {};
       return {
         videoId: v.id.videoId,
-        title: v.snippet.title,
+        title: decodeHtml(v.snippet.title),
         thumbnail: v.snippet.thumbnails?.medium?.url
           || v.snippet.thumbnails?.default?.url || '',
         viewCount: num(s.statistics?.viewCount),
@@ -965,15 +990,15 @@ async function onSearch() {
 
       return {
         videoId: v.id.videoId,
-        title: v.snippet.title,
-        channelTitle: v.snippet.channelTitle,
+        title: decodeHtml(v.snippet.title),
+        channelTitle: decodeHtml(v.snippet.channelTitle),
         channelId: v.snippet.channelId,
         publishedAt: v.snippet.publishedAt,
         thumbnail: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url || '',
-        description: d.snippet?.description || v.snippet?.description || '',
-        tags: d.snippet?.tags || [],
+        description: decodeHtml(d.snippet?.description || v.snippet?.description || ''),
+        tags: (d.snippet?.tags || []).map(decodeHtml),
         channelThumbnail: c.snippet?.thumbnails?.medium?.url || c.snippet?.thumbnails?.default?.url || '',
-        channelDescription: c.snippet?.description || '',
+        channelDescription: decodeHtml(c.snippet?.description || ''),
         channelPublishedAt: c.snippet?.publishedAt || '',
         channelDays: c.snippet?.publishedAt ? daysSince(c.snippet.publishedAt) : null,
         uploadsPlaylistId: c.contentDetails?.relatedPlaylists?.uploads || '',
@@ -1419,6 +1444,14 @@ function mapBy(arr, key) {
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// YouTube API가 제목 등에 보내는 HTML 엔티티(&#39;, &amp;, &quot;)를 실제 문자로 복원
+const _decodeEl = document.createElement('textarea');
+function decodeHtml(s) {
+  if (s === null || s === undefined) return s;
+  _decodeEl.innerHTML = String(s);
+  return _decodeEl.value;
 }
 function showToast(msg) {
   toastEl.textContent = msg;
