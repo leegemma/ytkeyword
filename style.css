@@ -1883,6 +1883,80 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   margin-bottom: 2px;
 }
 
+/* ────────────── Save toggle button (디테일 모달용) ────────────── */
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.hero-title-row h3 { margin: 0; flex: 1; }
+
+.save-toggle-btn {
+  background: var(--bg);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  color: var(--gray-400);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.save-toggle-btn:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.save-toggle-btn.saved {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+}
+
+/* 저장 채널 카드 (saved list 모달의 채널 탭) */
+.saved-channel-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--bg);
+}
+.saved-channel-card:hover { background: var(--green-soft); }
+.saved-channel-card .channel-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  margin: 0;
+}
+.saved-channel-card .saved-channel-info {
+  flex: 1;
+  overflow: hidden;
+}
+.saved-channel-card .saved-channel-name {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saved-channel-card .saved-channel-meta {
+  font-size: 11px;
+  color: var(--gray-500);
+}
+.saved-channel-card .card-save-btn {
+  position: static;
+  margin-left: auto;
+}
+
 /* ────────────── Toast ────────────── */
 .toast {
   position: fixed;

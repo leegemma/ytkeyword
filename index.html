@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -72,9 +72,11 @@
   <section class="settings-bar">
     <label>키워드당
       <select id="maxResults">
-        <option value="10">10개</option>
-        <option value="25">25개</option>
-        <option value="50" selected>50개</option>
+        <option value="10">10개 (20 units)</option>
+        <option value="25">25개 (100 units)</option>
+        <option value="50" selected>50개 (100 units)</option>
+        <option value="100">100개 (200 units)</option>
+        <option value="200">200개 (400 units)</option>
       </select>
     </label>
     <label>정렬
@@ -244,6 +246,16 @@
         </div>
 
         <div class="filter-block">
+          <h3>채널 총 영상 수</h3>
+          <div class="filter-stats" id="videoCountStats"></div>
+          <div class="range-inputs">
+            <input type="number" id="videoCountMin" min="0" placeholder="0" />
+            <span class="dash">-</span>
+            <input type="number" id="videoCountMax" min="0" placeholder="10,000+" />
+          </div>
+        </div>
+
+        <div class="filter-block">
           <h3>영상 게시일</h3>
           <div class="range-inputs">
             <input type="date" id="dateMin" />
@@ -365,7 +377,10 @@
               <span id="detailDuration" class="duration-overlay"></span>
             </div>
             <div class="hero-info">
-              <h3 id="detailTitle"></h3>
+              <div class="hero-title-row">
+                <h3 id="detailTitle"></h3>
+                <button class="save-toggle-btn" id="videoSaveToggle" type="button" title="영상 저장">☆</button>
+              </div>
               <div id="detailMeta" class="hero-meta"></div>
               <a id="detailYouTubeBtn" class="detail-link-btn" target="_blank" rel="noopener">유튜브에서 영상 보기 →</a>
             </div>
@@ -461,7 +476,10 @@
           <div class="channel-hero">
             <img id="channelThumb" class="channel-avatar" alt="" />
             <div class="channel-hero-info">
-              <h3 id="channelName"></h3>
+              <div class="hero-title-row">
+                <h3 id="channelName"></h3>
+                <button class="save-toggle-btn" id="videoChannelSaveToggle" type="button" title="채널 저장">☆</button>
+              </div>
               <a id="channelYouTubeLink" target="_blank" rel="noopener" class="detail-link-btn">유튜브에서 채널 보기 →</a>
             </div>
           </div>
@@ -580,17 +598,20 @@
     </div>
   </div>
 
-  <!-- Saved videos modal -->
+  <!-- Saved list modal (영상 + 채널 탭) -->
   <div id="savedListModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-backdrop" data-close></div>
     <div class="modal-panel modal-panel-detail">
-      <header class="modal-head">
-        <h2>⭐ 저장한 영상</h2>
+      <header class="detail-head">
+        <nav class="detail-tabs">
+          <button class="detail-tab active" data-savedtab="videos" type="button">⭐ 저장한 영상 (<span id="savedVideosCount">0</span>)</button>
+          <button class="detail-tab" data-savedtab="channels" type="button">⭐ 저장한 채널 (<span id="savedChannelsCount">0</span>)</button>
+        </nav>
         <button class="modal-close" data-close aria-label="닫기">×</button>
       </header>
       <div class="modal-body">
-        <p class="hint" id="savedListHint">저장한 영상은 여기서 다시 볼 수 있습니다.</p>
-        <div id="savedListGrid" class="mini-grid"></div>
+        <p class="hint" id="savedListHint">저장한 항목은 여기서 다시 볼 수 있습니다.</p>
+        <div id="savedListGrid"></div>
       </div>
       <footer class="modal-foot">
         <button class="link-btn" id="clearAllSavedBtn">전체 삭제</button>
@@ -637,7 +658,10 @@
           <div class="channel-hero">
             <img id="cdThumb" class="channel-avatar" alt="" />
             <div class="channel-hero-info">
-              <h3 id="cdName"></h3>
+              <div class="hero-title-row">
+                <h3 id="cdName"></h3>
+                <button class="save-toggle-btn" id="cdSaveToggle" type="button" title="채널 저장">☆</button>
+              </div>
               <div class="cd-meta-row">
                 <span class="cd-chip" id="cdCountryChip"></span>
                 <a id="cdYTLink" class="detail-link-btn" target="_blank" rel="noopener">유튜브에서 채널 보기 →</a>
@@ -715,6 +739,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=16"></script>
+  <script src="script.js?v=17"></script>
 </body>
 </html>

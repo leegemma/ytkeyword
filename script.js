@@ -13,6 +13,8 @@ const LS_KEY_BLOCKED_VIDEOS = 'ytkw:blockedVideos';
 const LS_KEY_BLOCKED_CHANNELS = 'ytkw:blockedChannels';
 const LS_KEY_FEATURES = 'ytkw:features';
 const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
+const LS_KEY_SAVED_CHANNELS = 'ytkw:savedChannels';
+const LS_KEY_ASPECT = 'ytkw:aspect:'; // prefix for video aspect cache
 
 const DEFAULT_FEATURES = { summary: false };
 const LS_KEY_REGION = 'ytkw:region';
@@ -145,18 +147,28 @@ try {
   Object.assign(features, JSON.parse(localStorage.getItem(LS_KEY_FEATURES) || '{}'));
 } catch {}
 
-let savedVideos = []; // [{ videoId, title, channelTitle, channelId, thumbnail, duration, viewCount, publishedAt, savedAt }]
+let savedVideos = [];
 let savedVideoIds = new Set();
 try {
   savedVideos = JSON.parse(localStorage.getItem(LS_KEY_SAVED_VIDEOS) || '[]');
   savedVideos.forEach(v => savedVideoIds.add(v.videoId));
 } catch {}
 
+let savedChannels = [];
+let savedChannelIds = new Set();
+try {
+  savedChannels = JSON.parse(localStorage.getItem(LS_KEY_SAVED_CHANNELS) || '[]');
+  savedChannels.forEach(c => savedChannelIds.add(c.channelId));
+} catch {}
+
+let savedListActiveTab = 'videos'; // 'videos' | 'channels'
+
 function freshFilters() {
   return {
     viewMin: null, viewMax: null,
     subMin: null, subMax: null,
     likeMin: null, likeMax: null,
+    videoCountMin: null, videoCountMax: null,
     dateMin: null, dateMax: null,
     contribution: new Set(),
     performance: new Set(),
@@ -296,9 +308,26 @@ function bindEvents() {
     });
   });
 
-  // 저장한 영상
-  savedListBtn.addEventListener('click', openSavedListModal);
+  // 저장한 영상/채널
+  savedListBtn.addEventListener('click', () => openSavedListModal());
   $('clearAllSavedBtn').addEventListener('click', clearAllSaved);
+  // 저장 모달 탭 (영상/채널)
+  savedListModal.querySelectorAll('.detail-tab[data-savedtab]').forEach(b => {
+    b.addEventListener('click', () => switchSavedTab(b.dataset.savedtab));
+  });
+  // 디테일 모달 저장 토글들
+  const vt = $('videoSaveToggle');
+  if (vt) vt.addEventListener('click', () => {
+    if (currentDetail?.result) toggleSave(currentDetail.result.videoId);
+  });
+  const vct = $('videoChannelSaveToggle');
+  if (vct) vct.addEventListener('click', () => {
+    if (currentDetail?.result) toggleSaveChannel(currentDetail.result.channelId);
+  });
+  const cdt = $('cdSaveToggle');
+  if (cdt) cdt.addEventListener('click', () => {
+    if (currentChannelDetail?.channel) toggleSaveChannel(currentChannelDetail.channel.channelId);
+  });
 
   // 검색 기록
   historyBtn.addEventListener('click', openHistoryModal);
@@ -468,7 +497,7 @@ function bindEvents() {
   });
 
   // Range inputs (live update)
-  ['viewMin','viewMax','subMin','subMax','likeMin','likeMax','dateMin','dateMax'].forEach(id => {
+  ['viewMin','viewMax','subMin','subMax','likeMin','likeMax','videoCountMin','videoCountMax','dateMin','dateMax'].forEach(id => {
     $(id).addEventListener('input', () => {
       const v = $(id).value;
       filters[id] = v === '' ? null : (id.startsWith('date') ? v : Number(v));
@@ -565,6 +594,24 @@ function openVideoDetail(result) {
   currentDetail = { result, recent: null, popular: null };
   populateVideoTab(result);
   populateChannelTab(result);
+  // 저장 토글 상태 동기화
+  updateSaveButtons(result.videoId, savedVideoIds.has(result.videoId));
+  updateSaveChannelButtons(result.channelId, savedChannelIds.has(result.channelId));
+  // 영상 저장 토글 (모달용)
+  const vBtn = $('videoSaveToggle');
+  if (vBtn) {
+    const isSaved = savedVideoIds.has(result.videoId);
+    vBtn.classList.toggle('saved', isSaved);
+    vBtn.textContent = isSaved ? '★' : '☆';
+    vBtn.title = isSaved ? '영상 저장 해제' : '영상 저장';
+  }
+  // 채널 저장 토글
+  const cBtn = $('videoChannelSaveToggle');
+  if (cBtn) {
+    const isSaved = savedChannelIds.has(result.channelId);
+    cBtn.classList.toggle('saved', isSaved);
+    cBtn.textContent = isSaved ? '★' : '☆';
+  }
   // 이전 영상의 인기 영상 그리드 잔존 리셋
   $('popularGrid').innerHTML = '<p class="loading-text">탭을 누르면 로딩됩니다 (API quota 100 units 사용)</p>';
   switchDetailTab('video');
@@ -721,9 +768,10 @@ function renderMiniGrid(elOrId, items) {
     grid.innerHTML = '<p class="empty-text">영상 없음</p>';
     return;
   }
-  // 가로/세로 분리 (isShorts 플래그 활용, 없으면 모두 가로로 간주)
-  const landscape = items.filter(it => !it.isShorts);
-  const shorts = items.filter(it => it.isShorts);
+  // isPortrait 우선, fallback isShorts
+  const isP = it => (it.isPortrait !== undefined ? it.isPortrait : it.isShorts);
+  const landscape = items.filter(it => !isP(it));
+  const shorts = items.filter(it => isP(it));
   grid.className = '';
   const sections = [];
   if (landscape.length) {
@@ -1171,15 +1219,6 @@ function persistSaved() {
   localStorage.setItem(LS_KEY_SAVED_VIDEOS, JSON.stringify(savedVideos));
 }
 
-function updateSavedListButton() {
-  if (savedVideoIds.size > 0) {
-    savedListBtn.hidden = false;
-    savedListCount.textContent = savedVideoIds.size;
-  } else {
-    savedListBtn.hidden = true;
-  }
-}
-
 function toggleSave(videoId) {
   // 결과 목록에서 찾거나 savedVideos에서 찾기
   const fromResults = allResults.find(r => r.videoId === videoId);
@@ -1209,6 +1248,8 @@ function toggleSave(videoId) {
       duration: fromResults.duration,
       viewCount: fromResults.viewCount,
       publishedAt: fromResults.publishedAt,
+      isShorts: fromResults.isShorts,
+      isPortrait: fromResults.isPortrait,
       savedAt: Date.now(),
     };
     savedVideos.unshift(entry);
@@ -1233,6 +1274,15 @@ function updateSaveButtons(videoId, isSaved) {
     b.textContent = isSaved ? '★' : '☆';
     b.title = isSaved ? '저장 해제' : '저장';
   });
+  // 영상 디테일 모달 토글
+  if (currentDetail?.result?.videoId === videoId) {
+    const btn = $('videoSaveToggle');
+    if (btn) {
+      btn.classList.toggle('saved', isSaved);
+      btn.textContent = isSaved ? '★' : '☆';
+      btn.title = isSaved ? '영상 저장 해제' : '영상 저장';
+    }
+  }
   // 카드 썸네일의 saved-badge
   if (viewMode === 'cards') {
     const card = document.querySelector(`.card-thumb[data-detail-id="${CSS.escape(videoId)}"]`);
@@ -1250,53 +1300,186 @@ function updateSaveButtons(videoId, isSaved) {
   }
 }
 
-function openSavedListModal() {
-  renderSavedList();
+function openSavedListModal(tab) {
+  if (tab) savedListActiveTab = tab;
+  switchSavedTab(savedListActiveTab);
   savedListModal.classList.remove('hidden');
+}
+
+function switchSavedTab(tab) {
+  savedListActiveTab = tab;
+  savedListModal.querySelectorAll('.detail-tab[data-savedtab]').forEach(b =>
+    b.classList.toggle('active', b.dataset.savedtab === tab));
+  $('savedVideosCount').textContent = savedVideos.length;
+  $('savedChannelsCount').textContent = savedChannels.length;
+  renderSavedList();
 }
 
 function renderSavedList() {
   const grid = $('savedListGrid');
-  $('savedListHint').textContent = savedVideos.length
-    ? `저장한 영상 ${savedVideos.length}개 — 카드 클릭 시 YouTube로 이동, 별 표시로 저장 해제`
-    : '아직 저장한 영상이 없습니다. 검색 결과의 ☆ 버튼을 눌러 저장하세요.';
-  if (!savedVideos.length) {
-    grid.innerHTML = '';
+  const hint = $('savedListHint');
+  if (savedListActiveTab === 'channels') {
+    hint.textContent = savedChannels.length
+      ? `저장한 채널 ${savedChannels.length}개 — 카드 클릭 시 YouTube로 이동`
+      : '저장한 채널이 없습니다. 채널 찾기 → 채널 상세 → ☆ 버튼으로 저장하세요.';
+    if (!savedChannels.length) { grid.innerHTML = ''; return; }
+    grid.innerHTML = savedChannels.map(c => {
+      const countryRegion = REGIONS.find(r => r.code === c.country);
+      const flag = countryRegion ? countryRegion.flag : '';
+      return `
+        <a class="saved-channel-card" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" style="margin-bottom:8px">
+          <img class="channel-avatar" src="${c.thumbnail || ''}" alt="" loading="lazy" />
+          <div class="saved-channel-info">
+            <div class="saved-channel-name">${flag ? flag + ' ' : ''}${escapeHtml(c.name)}</div>
+            <div class="saved-channel-meta">구독자 ${fmtCompact(c.subscribers || 0)} · 영상 ${fmtCompact(c.videoCount || 0)}개</div>
+          </div>
+          <button class="card-save-btn saved" data-saved-channel-remove="${escapeHtml(c.channelId)}" type="button" title="저장 해제">★</button>
+        </a>
+      `;
+    }).join('');
+    grid.querySelectorAll('[data-saved-channel-remove]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleSaveChannel(b.dataset.savedChannelRemove);
+      });
+    });
     return;
   }
-  grid.innerHTML = savedVideos.map(v => `
-    <div class="mini-card" style="position:relative">
-      <a class="mini-thumb" href="https://www.youtube.com/watch?v=${v.videoId}" target="_blank" rel="noopener" style="display:block">
-        <img src="${v.thumbnail}" alt="" loading="lazy" />
-        ${v.duration ? `<span class="duration-overlay">${v.duration}</span>` : ''}
-      </a>
-      <div class="mini-info">
-        <h5>${escapeHtml(v.title)}</h5>
-        <div class="mini-meta">${escapeHtml(v.channelTitle)} · ${fmtCompact(v.viewCount || 0)} views</div>
-      </div>
-      <button class="card-save-btn saved" data-saved-remove="${escapeHtml(v.videoId)}" type="button" title="저장 해제" style="top:6px; right:6px">★</button>
-    </div>
-  `).join('');
-  // unsave 핸들러
-  grid.querySelectorAll('[data-saved-remove]').forEach(b => {
-    b.addEventListener('click', (e) => {
+  // 영상 탭
+  hint.textContent = savedVideos.length
+    ? `저장한 영상 ${savedVideos.length}개 — 카드 클릭 시 YouTube, ★로 저장 해제`
+    : '저장한 영상이 없습니다. 검색 결과의 ☆ 버튼을 눌러 저장하세요.';
+  if (!savedVideos.length) { grid.innerHTML = ''; return; }
+  // mini-grid 패턴 (가로/세로 분리)
+  renderMiniGrid(grid, savedVideos.map(v => ({ ...v, isShorts: v.isPortrait ?? v.isShorts, isPortrait: v.isPortrait ?? v.isShorts })));
+  // 저장 해제 버튼 추가 (각 카드 위)
+  grid.querySelectorAll('.result-card').forEach((card, i) => {
+    const v = savedVideos[i];
+    if (!v) return;
+    const btn = document.createElement('button');
+    btn.className = 'card-save-btn saved';
+    btn.textContent = '★';
+    btn.title = '저장 해제';
+    btn.style.cssText = 'position:absolute; top:6px; right:6px; z-index:2';
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      toggleSave(b.dataset.savedRemove);
+      toggleSave(v.videoId);
     });
+    card.style.position = 'relative';
+    card.appendChild(btn);
   });
 }
 
 function clearAllSaved() {
-  if (!confirm(`저장한 영상 ${savedVideos.length}개를 모두 삭제하시겠습니까?`)) return;
-  const ids = savedVideos.map(v => v.videoId);
-  savedVideos = [];
-  savedVideoIds.clear();
-  persistSaved();
-  updateSavedListButton();
-  ids.forEach(id => updateSaveButtons(id, false));
-  savedListModal.classList.add('hidden');
-  showToast('🗑 저장 목록 비움');
+  if (savedListActiveTab === 'channels') {
+    if (!savedChannels.length) return;
+    if (!confirm(`저장한 채널 ${savedChannels.length}개를 모두 삭제하시겠습니까?`)) return;
+    const ids = savedChannels.map(c => c.channelId);
+    savedChannels = [];
+    savedChannelIds.clear();
+    persistSavedChannels();
+    updateSavedListButton();
+    ids.forEach(id => updateSaveChannelButtons(id, false));
+    savedListModal.classList.add('hidden');
+    showToast('🗑 저장 채널 목록 비움');
+  } else {
+    if (!savedVideos.length) return;
+    if (!confirm(`저장한 영상 ${savedVideos.length}개를 모두 삭제하시겠습니까?`)) return;
+    const ids = savedVideos.map(v => v.videoId);
+    savedVideos = [];
+    savedVideoIds.clear();
+    persistSaved();
+    updateSavedListButton();
+    ids.forEach(id => updateSaveButtons(id, false));
+    savedListModal.classList.add('hidden');
+    showToast('🗑 저장 영상 목록 비움');
+  }
+}
+
+/* ───────── 저장한 채널 ───────── */
+function persistSavedChannels() {
+  localStorage.setItem(LS_KEY_SAVED_CHANNELS, JSON.stringify(savedChannels));
+}
+
+function toggleSaveChannel(channelId) {
+  const channel = currentChannelDetail?.channel?.channelId === channelId
+    ? currentChannelDetail.channel
+    : (currentDetail?.result?.channelId === channelId
+        ? buildChannelFromVideoResult(currentDetail.result)
+        : allChannels.find(c => c.channelId === channelId));
+  if (savedChannelIds.has(channelId)) {
+    savedChannelIds.delete(channelId);
+    savedChannels = savedChannels.filter(c => c.channelId !== channelId);
+    persistSavedChannels();
+    updateSavedListButton();
+    updateSaveChannelButtons(channelId, false);
+    showToast('⭐ 채널 저장 해제됨');
+    if (!savedListModal.classList.contains('hidden')) renderSavedList();
+  } else {
+    if (!channel) {
+      showToast('저장할 채널 정보를 찾을 수 없습니다');
+      return;
+    }
+    const entry = {
+      channelId: channel.channelId,
+      name: channel.name || channel.channelTitle || '',
+      thumbnail: channel.thumbnail || channel.channelThumbnail || '',
+      country: channel.country || '',
+      subscribers: channel.subscribers || channel.subscriberCount || 0,
+      videoCount: channel.videoCount || channel.channelVideoCount || 0,
+      savedAt: Date.now(),
+    };
+    savedChannels.unshift(entry);
+    savedChannelIds.add(channelId);
+    persistSavedChannels();
+    updateSavedListButton();
+    updateSaveChannelButtons(channelId, true);
+    showToast(`⭐ "${entry.name}" 채널 저장됨`);
+  }
+}
+
+function buildChannelFromVideoResult(r) {
+  return {
+    channelId: r.channelId,
+    name: r.channelTitle,
+    thumbnail: r.channelThumbnail,
+    country: '',
+    subscribers: r.subscriberCount,
+    videoCount: r.channelVideoCount,
+  };
+}
+
+function updateSaveChannelButtons(channelId, isSaved) {
+  // 채널 디테일 모달 토글
+  if (currentChannelDetail?.channel?.channelId === channelId) {
+    const btn = $('cdSaveToggle');
+    if (btn) {
+      btn.classList.toggle('saved', isSaved);
+      btn.textContent = isSaved ? '★' : '☆';
+      btn.title = isSaved ? '채널 저장 해제' : '채널 저장';
+    }
+  }
+  // 비디오 디테일 모달의 채널 정보 탭 토글
+  if (currentDetail?.result?.channelId === channelId) {
+    const btn = $('videoChannelSaveToggle');
+    if (btn) {
+      btn.classList.toggle('saved', isSaved);
+      btn.textContent = isSaved ? '★' : '☆';
+      btn.title = isSaved ? '채널 저장 해제' : '채널 저장';
+    }
+  }
+}
+
+function updateSavedListButton() {
+  const total = savedVideoIds.size + savedChannelIds.size;
+  if (total > 0) {
+    savedListBtn.hidden = false;
+    savedListCount.textContent = total;
+  } else {
+    savedListBtn.hidden = true;
+  }
 }
 
 /* ───────── 테마 ───────── */
@@ -1361,8 +1544,21 @@ async function onSearch() {
 
   try {
     const params = buildSearchParams(q);
-    const search = await ytFetch('search', { ...params, key: apiKey });
-    const videos = (search.items || []).filter(v => v.id && v.id.videoId);
+    const totalWanted = Math.min(500, parseInt(maxResultsEl.value, 10) || 50);
+    // 한 번 호출에 50개 최대 → 페이지네이션
+    let collected = [];
+    let pageToken = '';
+    while (collected.length < totalWanted) {
+      const pageSize = Math.min(50, totalWanted - collected.length);
+      const pageParams = { ...params, maxResults: pageSize, key: apiKey };
+      if (pageToken) pageParams.pageToken = pageToken;
+      const search = await ytFetch('search', pageParams);
+      const items = (search.items || []).filter(v => v.id && v.id.videoId);
+      collected = collected.concat(items);
+      pageToken = search.nextPageToken || '';
+      if (!pageToken || !items.length) break;
+    }
+    const videos = collected;
     if (!videos.length) {
       allResults = [];
       displayResults = [];
@@ -1410,8 +1606,13 @@ async function onSearch() {
 
       const duration = d.contentDetails?.duration || '';
       const durationSec = parseDurationSec(duration);
-      // Shorts 판단: 3분 이하 (2024년 YouTube가 Shorts 최대 길이를 3분으로 변경)
+      // Shorts 판단: 3분 이하 (YouTube 정의)
       const isShorts = durationSec > 0 && durationSec <= 180;
+      // 종횡비 판단: 우선 캐시 또는 duration 기반 초기값 → 백그라운드에서 썸네일로 정확 보정
+      const cachedAspect = getCachedAspect(v.id.videoId);
+      const isPortrait = cachedAspect
+        ? cachedAspect === 'portrait'
+        : (durationSec > 0 && durationSec <= 60); // 1분 이하만 확신, 그 이상은 백그라운드 감지
 
       return {
         videoId: v.id.videoId,
@@ -1443,6 +1644,7 @@ async function onSearch() {
         duration: formatDuration(durationSec),
         durationSec,
         isShorts,
+        isPortrait,
         performanceTier: rateTier(performance, [0.3, 1, 3, 10]),
         contributionTier: rateTier(contribution, [0.3, 1, 3, 10]),
         exposureTier: rateTier(exposure, [0.5, 1.5, 4, 8]),
@@ -1457,11 +1659,77 @@ async function onSearch() {
     sortResults();
     renderResults();
     showToast(`✅ ${allResults.length}개 영상 검색됨`);
+
+    // 백그라운드: 종횡비 정확히 감지 (썸네일 로드)
+    detectAspectsForResults(allResults);
   } catch (err) {
     console.error(err);
     showError(`영상 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
   } finally {
     progressBar.classList.remove('active');
+  }
+}
+
+/* ───────── 종횡비 감지 (썸네일 native size) ───────── */
+function getCachedAspect(videoId) {
+  try { return localStorage.getItem(LS_KEY_ASPECT + videoId); } catch { return null; }
+}
+function setCachedAspect(videoId, aspect) {
+  try { localStorage.setItem(LS_KEY_ASPECT + videoId, aspect); } catch {}
+}
+
+function detectAspectFromThumb(videoId) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    let settled = false;
+    const finish = (aspect) => { if (!settled) { settled = true; resolve(aspect); } };
+    img.onload = () => {
+      const ar = img.naturalWidth / img.naturalHeight;
+      if (!isFinite(ar) || img.naturalWidth === 0) {
+        finish(null);
+      } else if (ar < 0.95) {
+        finish('portrait');
+      } else if (ar > 1.05) {
+        finish('landscape');
+      } else {
+        finish(null); // 1:1 정사각 등 애매
+      }
+    };
+    img.onerror = () => finish(null);
+    setTimeout(() => finish(null), 5000); // 5초 timeout
+    img.src = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+  });
+}
+
+async function detectAspectsForResults(results) {
+  if (!results || !results.length) return;
+  // 캐시 미스만 감지
+  const toDetect = results.filter(r => !getCachedAspect(r.videoId));
+  if (!toDetect.length) {
+    // 캐시만으로 모두 결정 가능 — 이미 결과 객체에 반영됨
+    return;
+  }
+
+  // 5개씩 병렬로 감지 (브라우저 동시 연결 제한 고려)
+  const CONCURRENCY = 5;
+  let updated = false;
+  for (let i = 0; i < toDetect.length; i += CONCURRENCY) {
+    const batch = toDetect.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(async (r) => {
+      const aspect = await detectAspectFromThumb(r.videoId);
+      if (!aspect) return; // 알 수 없음 — 기존 값 유지
+      setCachedAspect(r.videoId, aspect);
+      const newIsPortrait = aspect === 'portrait';
+      if (r.isPortrait !== newIsPortrait) {
+        r.isPortrait = newIsPortrait;
+        updated = true;
+      }
+    }));
+  }
+
+  // 결과 갱신
+  if (updated && viewMode === 'cards' && displayResults.length) {
+    renderCards();
   }
 }
 
@@ -1475,15 +1743,26 @@ async function onSearchChannels(q, apiKey) {
   channelsWrap.hidden = true;
 
   try {
-    const search = await ytFetch('search', {
-      part: 'snippet',
-      type: 'channel',
-      maxResults: maxResultsEl.value,
-      q,
-      ...(currentRegion ? { regionCode: currentRegion } : {}),
-      key: apiKey,
-    });
-    const ids = (search.items || [])
+    const totalWanted = Math.min(500, parseInt(maxResultsEl.value, 10) || 50);
+    let collected = [];
+    let pageToken = '';
+    while (collected.length < totalWanted) {
+      const pageSize = Math.min(50, totalWanted - collected.length);
+      const sp = {
+        part: 'snippet',
+        type: 'channel',
+        maxResults: pageSize,
+        q,
+        key: apiKey,
+        ...(currentRegion ? { regionCode: currentRegion } : {}),
+      };
+      if (pageToken) sp.pageToken = pageToken;
+      const search = await ytFetch('search', sp);
+      collected = collected.concat(search.items || []);
+      pageToken = search.nextPageToken || '';
+      if (!pageToken || !search.items?.length) break;
+    }
+    const ids = collected
       .map(it => it.snippet?.channelId || it.id?.channelId)
       .filter(Boolean);
     if (!ids.length) {
@@ -1690,10 +1969,16 @@ function tierWithValue(val, tier, suffix) {
 
 /* ───────── 채널 디테일 모달 ───────── */
 async function openChannelDetail(channel) {
-  // 채널 정보 탭에 필요한 추가 데이터 (description, customUrl 등은 이미 있음)
-  // 평균 좋아요는 영상 통계에서 계산 필요 → 디테일 모달에서 한 번 더 fetch
   currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null };
   populateChannelInfoTab(channel);
+  // 저장 토글 상태 동기화
+  const btn = $('cdSaveToggle');
+  if (btn) {
+    const isSaved = savedChannelIds.has(channel.channelId);
+    btn.classList.toggle('saved', isSaved);
+    btn.textContent = isSaved ? '★' : '☆';
+    btn.title = isSaved ? '채널 저장 해제' : '채널 저장';
+  }
   // 평균 좋아요는 가벼우니 백그라운드로 로드
   loadAvgLikes();
   switchChannelDetailTab('info');
@@ -1941,10 +2226,11 @@ function miniCardHtml(it, isPortrait) {
 }
 
 function buildSearchParams(q) {
+  // 페이지네이션을 호출 측에서 처리하므로 페이지당 50으로 캡
   const p = {
     part: 'snippet',
     type: 'video',
-    maxResults: maxResultsEl.value,
+    maxResults: 50,
     q,
   };
   const sort = sortOrderEl.value;
@@ -2094,8 +2380,10 @@ function renderTable() {
 }
 
 function renderCards() {
-  const landscape = displayResults.filter(r => !r.isShorts);
-  const shorts = displayResults.filter(r => r.isShorts);
+  // isPortrait (썸네일 native aspect 기반)로 분리. fallback: isShorts
+  const isPortraitOf = r => (r.isPortrait !== undefined ? r.isPortrait : r.isShorts);
+  const landscape = displayResults.filter(r => !isPortraitOf(r));
+  const shorts = displayResults.filter(r => isPortraitOf(r));
 
   const sections = [];
   if (landscape.length) {
@@ -2180,9 +2468,10 @@ function openFilterModal() {
     return;
   }
   // 통계 채우기
-  $('viewStats').textContent  = statsLine(allResults.map(r => r.viewCount), '합계', '평균값', '중앙값');
+  $('viewStats').textContent  = statsLine(allResults.map(r => r.viewCount));
   $('subStats').textContent   = statsLine(allResults.map(r => r.subscriberCount));
   $('likeStats').textContent  = statsLine(allResults.map(r => r.likeCount));
+  $('videoCountStats').textContent = statsLine(allResults.map(r => r.channelVideoCount));
   // 티어별 카운트
   updateTierCounts();
   updateFilterPreviewCount();
@@ -2190,11 +2479,13 @@ function openFilterModal() {
 }
 
 function statsLine(arr) {
-  const sum = arr.reduce((a, b) => a + b, 0);
-  const avg = arr.length ? Math.round(sum / arr.length) : 0;
-  const sorted = [...arr].sort((a,b)=>a-b);
-  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
-  return `합계: ${fmtCompact(sum)} | 평균값: ${fmtCompact(avg)} | 중앙값: ${fmtCompact(median)}`;
+  const nums = arr.filter(v => typeof v === 'number' && !isNaN(v));
+  if (!nums.length) return '데이터 없음';
+  const sum = nums.reduce((a, b) => a + b, 0);
+  const avg = Math.round(sum / nums.length);
+  const sorted = [...nums].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  return `합계: ${fmtCompact(sum)} · 평균: ${fmtCompact(avg)} · 중앙값: ${fmtCompact(median)}`;
 }
 
 function updateTierCounts() {
@@ -2225,6 +2516,8 @@ function applyFiltersToArray(arr) {
     if (filters.subMax !== null && r.subscriberCount > filters.subMax) return false;
     if (filters.likeMin !== null && r.likeCount < filters.likeMin) return false;
     if (filters.likeMax !== null && r.likeCount > filters.likeMax) return false;
+    if (filters.videoCountMin !== null && r.channelVideoCount < filters.videoCountMin) return false;
+    if (filters.videoCountMax !== null && r.channelVideoCount > filters.videoCountMax) return false;
     if (filters.dateMin) { if (new Date(r.publishedAt) < new Date(filters.dateMin)) return false; }
     if (filters.dateMax) { if (new Date(r.publishedAt) > new Date(filters.dateMax + 'T23:59:59')) return false; }
     if (filters.contribution.size && !filters.contribution.has(r.contributionTier)) return false;
@@ -2249,7 +2542,7 @@ function resetFilters() {
   document.querySelectorAll('.toggle-buttons button.active').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.quick-period button').forEach(b => b.classList.remove('active'));
   document.querySelector('.quick-period button[data-days=""]')?.classList.add('active');
-  ['viewMin','viewMax','subMin','subMax','likeMin','likeMax','dateMin','dateMax'].forEach(id => { $(id).value = ''; });
+  ['viewMin','viewMax','subMin','subMax','likeMin','likeMax','videoCountMin','videoCountMax','dateMin','dateMax'].forEach(id => { $(id).value = ''; });
   refreshPresetChips();
   updateFilterPreviewCount();
 }
