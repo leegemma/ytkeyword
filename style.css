@@ -91,10 +91,60 @@ a { color: var(--green-dark); }
 }
 .search-input-wrap:focus-within { border-color: var(--green); }
 
-.lang-badge {
-  font-size: 16px;
+.region-picker {
+  position: relative;
   margin-right: 6px;
 }
+.region-flag {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.12s ease;
+}
+.region-flag:hover {
+  background: var(--gray-100);
+}
+
+.region-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -8px;
+  background: var(--bg);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+  max-height: 360px;
+  overflow-y: auto;
+  min-width: 200px;
+  padding: 6px;
+}
+.region-popover button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--gray-900);
+  border-radius: 6px;
+  font-weight: 500;
+}
+.region-popover button:hover { background: var(--green-soft); color: var(--green-dark); }
+.region-popover button.active {
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 700;
+}
+.region-popover .flag-emoji { font-size: 16px; }
 
 #keywordInput {
   flex: 1;

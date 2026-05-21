@@ -15,6 +15,34 @@ const LS_KEY_FEATURES = 'ytkw:features';
 const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
 
 const DEFAULT_FEATURES = { summary: false };
+const LS_KEY_REGION = 'ytkw:region';
+
+const REGIONS = [
+  { code: 'KR', flag: '🇰🇷', label: '한국' },
+  { code: 'US', flag: '🇺🇸', label: '미국' },
+  { code: 'JP', flag: '🇯🇵', label: '일본' },
+  { code: 'GB', flag: '🇬🇧', label: '영국' },
+  { code: 'CN', flag: '🇨🇳', label: '중국' },
+  { code: 'TW', flag: '🇹🇼', label: '대만' },
+  { code: 'HK', flag: '🇭🇰', label: '홍콩' },
+  { code: 'VN', flag: '🇻🇳', label: '베트남' },
+  { code: 'TH', flag: '🇹🇭', label: '태국' },
+  { code: 'ID', flag: '🇮🇩', label: '인도네시아' },
+  { code: 'PH', flag: '🇵🇭', label: '필리핀' },
+  { code: 'IN', flag: '🇮🇳', label: '인도' },
+  { code: 'FR', flag: '🇫🇷', label: '프랑스' },
+  { code: 'DE', flag: '🇩🇪', label: '독일' },
+  { code: 'IT', flag: '🇮🇹', label: '이탈리아' },
+  { code: 'ES', flag: '🇪🇸', label: '스페인' },
+  { code: 'RU', flag: '🇷🇺', label: '러시아' },
+  { code: 'BR', flag: '🇧🇷', label: '브라질' },
+  { code: 'MX', flag: '🇲🇽', label: '멕시코' },
+  { code: 'CA', flag: '🇨🇦', label: '캐나다' },
+  { code: 'AU', flag: '🇦🇺', label: '호주' },
+  { code: 'TR', flag: '🇹🇷', label: '튀르키예' },
+  { code: 'SA', flag: '🇸🇦', label: '사우디아라비아' },
+  { code: '',   flag: '🌐', label: '전체 (지역 무관)' },
+];
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const $ = (id) => document.getElementById(id);
@@ -61,6 +89,12 @@ const historyBtn     = $('historyBtn');
 const historyBtnCount = $('historyBtnCount');
 const historyModal   = $('historyModal');
 const historyFilter  = $('historyFilter');
+const regionFlagBtn  = $('regionFlagBtn');
+const regionPopover  = $('regionPopover');
+
+let currentRegion = localStorage.getItem(LS_KEY_REGION);
+if (currentRegion === null) currentRegion = 'KR'; // 기본
+if (!REGIONS.find(r => r.code === currentRegion)) currentRegion = 'KR';
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -70,7 +104,6 @@ const maxResultsEl   = $('maxResults');
 const sortOrderEl    = $('sortOrder');
 const videoDurationEl = $('videoDuration');
 const periodEl       = $('period');
-const regionEl       = $('region');
 
 /* State */
 let allResults = [];
@@ -125,11 +158,18 @@ function init() {
   bindEvents();
   applyViewModeButtonState();
   applyFeatureFlags();
+  applyRegionFlag();
   updateBlockListButton();
   updateSavedListButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
+}
+
+function applyRegionFlag() {
+  const r = REGIONS.find(x => x.code === currentRegion) || REGIONS[0];
+  regionFlagBtn.textContent = r.flag;
+  regionFlagBtn.title = `검색 국가: ${r.label}`;
 }
 
 function applyFeatureFlags() {
@@ -218,6 +258,27 @@ function bindEvents() {
   historyBtn.addEventListener('click', openHistoryModal);
   historyFilter.addEventListener('input', renderHistoryModal);
   $('clearAllHistoryBtn').addEventListener('click', clearAllHistory);
+
+  // 국가 선택기 (플래그)
+  regionFlagBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleRegionPopover();
+  });
+  regionPopover.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-region]');
+    if (!btn) return;
+    setRegion(btn.dataset.region);
+  });
+  // 바깥 클릭 시 닫기
+  document.addEventListener('click', (e) => {
+    if (!regionPopover.hidden && !e.target.closest('.region-picker')) {
+      regionPopover.hidden = true;
+    }
+  });
+  // ESC로 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !regionPopover.hidden) regionPopover.hidden = true;
+  });
   // 저장 버튼 (테이블 + 카드 + mini-grid)
   [tableWrap, cardGrid].forEach(c => {
     c.addEventListener('click', (e) => {
@@ -1294,8 +1355,7 @@ function buildSearchParams(q) {
   const days = parseInt(periodEl.value, 10);
   if (days) p.publishedAfter = new Date(Date.now() - days * 86400000).toISOString();
 
-  const region = regionEl.value;
-  if (region) p.regionCode = region;
+  if (currentRegion) p.regionCode = currentRegion;
 
   return p;
 }
@@ -1678,6 +1738,34 @@ function clearAllHistory() {
   renderHistory();
   historyModal.classList.add('hidden');
   showToast('🗑 검색 기록 삭제됨');
+}
+
+/* ───────── 국가 선택 ───────── */
+function toggleRegionPopover() {
+  if (regionPopover.hidden) {
+    renderRegionPopover();
+    regionPopover.hidden = false;
+  } else {
+    regionPopover.hidden = true;
+  }
+}
+
+function renderRegionPopover() {
+  regionPopover.innerHTML = REGIONS.map(r => `
+    <button data-region="${r.code}" class="${r.code === currentRegion ? 'active' : ''}" type="button">
+      <span class="flag-emoji">${r.flag}</span>
+      <span>${r.label}</span>
+    </button>
+  `).join('');
+}
+
+function setRegion(code) {
+  currentRegion = code;
+  localStorage.setItem(LS_KEY_REGION, code);
+  applyRegionFlag();
+  regionPopover.hidden = true;
+  const r = REGIONS.find(x => x.code === code);
+  showToast(`${r.flag} ${r.label} 검색으로 변경됨`);
 }
 
 function timeAgo(ts) {

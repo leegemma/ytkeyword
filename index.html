@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -19,7 +19,10 @@
   <header class="toolbar">
     <div class="toolbar-left">
       <div class="search-input-wrap">
-        <span class="lang-badge" title="검색 지역">🇰🇷</span>
+        <div class="region-picker">
+          <button class="region-flag" id="regionFlagBtn" type="button" title="검색 국가" aria-label="검색 국가">🇰🇷</button>
+          <div class="region-popover" id="regionPopover" hidden></div>
+        </div>
         <input id="keywordInput" type="text" placeholder="단어 또는 문장 입력" autocomplete="off" />
         <button class="search-btn" id="searchBtn" aria-label="검색">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -93,15 +96,6 @@
         <option value="30" selected>30일</option>
         <option value="90">90일</option>
         <option value="365">1년</option>
-      </select>
-    </label>
-    <label>지역
-      <select id="region">
-        <option value="KR" selected>한국 (KR)</option>
-        <option value="US">미국 (US)</option>
-        <option value="JP">일본 (JP)</option>
-        <option value="GB">영국 (GB)</option>
-        <option value="">전체</option>
       </select>
     </label>
   </section>
@@ -576,6 +570,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=9"></script>
+  <script src="script.js?v=10"></script>
 </body>
 </html>
