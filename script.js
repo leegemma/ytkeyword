@@ -95,6 +95,10 @@ const regionPopover  = $('regionPopover');
 const modeTabs       = $('modeTabs');
 const channelsWrap   = $('channelsWrap');
 const channelsBody   = $('channelsBody');
+const channelDetailModal = $('channelDetailModal');
+
+let currentChannelDetail = null; // { channel, latest, popular: { videos, shorts } }
+let currentTop10SubTab = 'videos';
 
 let currentRegion = localStorage.getItem(LS_KEY_REGION);
 if (currentRegion === null) currentRegion = 'KR'; // 기본
@@ -193,6 +197,7 @@ function setSearchMode(mode) {
   searchMode = mode;
   localStorage.setItem(LS_KEY_MODE, mode);
   applySearchMode();
+  renderHistory(); // 모드별 history 칩 갱신
   // 결과 영역 초기화
   tableWrap.hidden = true;
   cardGrid.hidden = true;
@@ -326,6 +331,31 @@ function bindEvents() {
     }
     sortChannels();
     renderChannelsTable();
+  });
+
+  // 채널명 클릭 → 채널 디테일 모달
+  channelsWrap.addEventListener('click', (e) => {
+    const trigger = e.target.closest('[data-channel-detail]');
+    if (!trigger) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    const channel = allChannels.find(c => c.channelId === trigger.dataset.channelDetail);
+    if (channel) openChannelDetail(channel);
+  });
+
+  // 채널 디테일 모달 탭 + top10 sub-tab
+  channelDetailModal.querySelector('.detail-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.detail-tab');
+    if (tab) switchChannelDetailTab(tab.dataset.ctab);
+  });
+  channelDetailModal.addEventListener('click', (e) => {
+    const sub = e.target.closest('.top10-tab');
+    if (sub) {
+      currentTop10SubTab = sub.dataset.top10;
+      channelDetailModal.querySelectorAll('.top10-tab').forEach(t =>
+        t.classList.toggle('active', t === sub));
+      renderTopGrid();
+    }
   });
 
   // 국가 선택기 (플래그)
@@ -1356,7 +1386,8 @@ async function onSearch() {
 
       const duration = d.contentDetails?.duration || '';
       const durationSec = parseDurationSec(duration);
-      const isShorts = durationSec > 0 && durationSec <= 60;
+      // Shorts 판단: 3분 이하 (2024년 YouTube가 Shorts 최대 길이를 3분으로 변경)
+      const isShorts = durationSec > 0 && durationSec <= 180;
 
       return {
         videoId: v.id.videoId,
@@ -1404,7 +1435,7 @@ async function onSearch() {
     showToast(`✅ ${allResults.length}개 영상 검색됨`);
   } catch (err) {
     console.error(err);
-    showToast(`오류: ${err.message}`);
+    showError(`영상 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
   } finally {
     progressBar.classList.remove('active');
   }
@@ -1490,7 +1521,7 @@ async function onSearchChannels(q, apiKey) {
     showToast(`✅ ${allChannels.length}개 채널 검색됨`);
   } catch (err) {
     console.error(err);
-    showToast(`오류: ${err.message}`);
+    showError(`채널 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
   } finally {
     progressBar.classList.remove('active');
   }
@@ -1547,7 +1578,7 @@ function renderChannelsTable() {
           </div>
         </td>
         <td>
-          <a class="channel-name" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" title="${escapeHtml(c.description)}">${escapeHtml(c.name)}</a>
+          <a class="channel-name" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" data-channel-detail="${escapeHtml(c.channelId)}" title="클릭하면 채널 상세 (Cmd+클릭은 YouTube)">${escapeHtml(c.name)}</a>
         </td>
         <td>${fmtDate(c.publishedAt)}</td>
         <td class="num-cell">${fmtCompact(c.subscribers)}</td>
@@ -1578,6 +1609,263 @@ function tierWithValue(val, tier, suffix) {
   }
   const t = tier || 'minimal';
   return `<span class="mult-badge mult-inline mult-${t}">${label}</span>`;
+}
+
+/* ───────── 채널 디테일 모달 ───────── */
+async function openChannelDetail(channel) {
+  // 채널 정보 탭에 필요한 추가 데이터 (description, customUrl 등은 이미 있음)
+  // 평균 좋아요는 영상 통계에서 계산 필요 → 디테일 모달에서 한 번 더 fetch
+  currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null };
+  populateChannelInfoTab(channel);
+  // 평균 좋아요는 가벼우니 백그라운드로 로드
+  loadAvgLikes();
+  switchChannelDetailTab('info');
+  channelDetailModal.classList.remove('hidden');
+}
+
+function populateChannelInfoTab(c) {
+  $('cdThumb').src = c.thumbnail || '';
+  $('cdName').textContent = c.name;
+  $('cdYTLink').href = `https://www.youtube.com/channel/${c.channelId}`;
+
+  // 국가
+  const countryRegion = REGIONS.find(r => r.code === c.country);
+  if (countryRegion) {
+    $('cdCountryChip').innerHTML = `<span style="font-size:14px">${countryRegion.flag}</span> ${escapeHtml(countryRegion.label)}`;
+    $('cdCountryChip').hidden = false;
+  } else if (c.country) {
+    $('cdCountryChip').innerHTML = `🌐 ${escapeHtml(c.country)}`;
+    $('cdCountryChip').hidden = false;
+  } else {
+    $('cdCountryChip').hidden = true;
+  }
+
+  // 통계 카드
+  $('cdSubs').textContent = fmtCompact(c.subscribers);
+  $('cdVideoCount').textContent = fmtCompact(c.videoCount);
+  $('cdDays').textContent = c.days.toLocaleString() + '일';
+  $('cdTotalViews').textContent = fmtCompact(c.totalViews);
+  $('cdAvgViews').textContent = c.videoCount > 0
+    ? fmtCompact(Math.round(c.totalViews / c.videoCount)) : '-';
+  $('cdAvgLikes').textContent = '계산 중...';
+
+  // 4 지표 (배지로)
+  $('cdViewToSub').innerHTML = tierWithValue(c.viewToSubRatio, c.viewToSubTier, '%');
+  $('cdDailySub').innerHTML  = tierWithValue(c.dailySubGrowth, c.dailySubTier, '명');
+  $('cdVideoPerf').innerHTML = tierWithValue(c.videoPerformance, c.videoPerfTier, 'x');
+  $('cdGrowthSpeed').innerHTML = tierWithValue(c.growthSpeed, c.growthTier, 'v/일');
+
+  $('cdDescription').textContent = c.description || '소개 없음';
+  $('cdTags').textContent = '-'; // channels API 의 brandingSettings.channel.keywords 가 필요한데 제한적
+}
+
+function switchChannelDetailTab(tab) {
+  channelDetailModal.querySelectorAll('.detail-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.ctab === tab));
+  channelDetailModal.querySelectorAll('.detail-pane').forEach(p =>
+    p.classList.toggle('hidden', p.dataset.cpane !== tab));
+  if (tab === 'latest' && currentChannelDetail && !currentChannelDetail.latest) {
+    loadChannelLatest();
+  } else if (tab === 'top' && currentChannelDetail
+    && !currentChannelDetail.popular.videos
+    && !currentChannelDetail.popular.shorts) {
+    loadChannelTop();
+  }
+}
+
+async function loadAvgLikes() {
+  if (!currentChannelDetail) return;
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) return;
+    const playlistId = await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
+    if (!playlistId) return;
+    // 최근 영상 10개의 좋아요 평균
+    const data = await ytFetch('playlistItems', {
+      part: 'contentDetails',
+      playlistId,
+      maxResults: 10,
+      key: apiKey,
+    });
+    const ids = (data.items || []).map(it => it.contentDetails.videoId).filter(Boolean);
+    if (!ids.length) { $('cdAvgLikes').textContent = '-'; return; }
+    const stats = await fetchInBatches('videos', { part: 'statistics' }, ids, apiKey);
+    const likes = stats.map(s => num(s.statistics?.likeCount));
+    const avg = likes.length ? Math.round(likes.reduce((a, b) => a + b, 0) / likes.length) : 0;
+    currentChannelDetail.avgLikes = avg;
+    $('cdAvgLikes').textContent = fmtCompact(avg);
+  } catch (err) {
+    console.warn('평균 좋아요 계산 실패:', err);
+    $('cdAvgLikes').textContent = '-';
+  }
+}
+
+async function getUploadsPlaylistId(channelId, apiKey) {
+  // 캐시 단순화 — channels.list 한 번 더 호출. 1 unit.
+  const data = await ytFetch('channels', {
+    part: 'contentDetails',
+    id: channelId,
+    key: apiKey,
+  });
+  return data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads || null;
+}
+
+async function loadChannelLatest() {
+  if (!currentChannelDetail) return;
+  const grid = $('cdLatestGrid');
+  grid.innerHTML = '<p class="loading-text">로딩 중...</p>';
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) { grid.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
+    const playlistId = await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
+    if (!playlistId) {
+      grid.innerHTML = '<p class="empty-text">최근 영상을 불러올 수 없음</p>';
+      return;
+    }
+    const data = await ytFetch('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: 10,
+      key: apiKey,
+    });
+    const ids = (data.items || []).map(it => it.contentDetails.videoId).filter(Boolean);
+    const stats = await fetchInBatches('videos',
+      { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const items = (data.items || []).map(it => {
+      const id = it.contentDetails.videoId;
+      const s = statsMap[id] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
+      return {
+        videoId: id,
+        title: decodeHtml(it.snippet.title),
+        thumbnail: it.snippet.thumbnails?.medium?.url
+          || it.snippet.thumbnails?.default?.url || '',
+        viewCount: num(s.statistics?.viewCount),
+        likeCount: num(s.statistics?.likeCount),
+        commentCount: num(s.statistics?.commentCount),
+        publishedAt: it.snippet.publishedAt,
+        duration: formatDuration(durationSec),
+        isShorts: durationSec > 0 && durationSec <= 180,
+      };
+    });
+    currentChannelDetail.latest = items;
+    renderChannelMiniGrid(grid, items);
+  } catch (err) {
+    grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function loadChannelTop() {
+  if (!currentChannelDetail) return;
+  const grid = $('cdTopGrid');
+  grid.innerHTML = '<p class="loading-text">로딩 중... (API quota 약 100 units)</p>';
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) { grid.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
+    const search = await ytFetch('search', {
+      part: 'snippet',
+      type: 'video',
+      channelId: currentChannelDetail.channel.channelId,
+      order: 'viewCount',
+      maxResults: 50,
+      key: apiKey,
+    });
+    const videos = (search.items || []).filter(v => v.id?.videoId);
+    const ids = videos.map(v => v.id.videoId);
+    const stats = await fetchInBatches('videos',
+      { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const items = videos.map(v => {
+      const s = statsMap[v.id.videoId] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
+      const views = num(s.statistics?.viewCount);
+      const channelAvg = currentChannelDetail.channel.avgViewPerVideo || 1;
+      const contribution = channelAvg > 0 ? views / channelAvg : null;
+      const subs = currentChannelDetail.channel.subscribers || 1;
+      const performance = subs > 0 ? views / subs : null;
+      return {
+        videoId: v.id.videoId,
+        title: decodeHtml(v.snippet.title),
+        thumbnail: v.snippet.thumbnails?.medium?.url
+          || v.snippet.thumbnails?.default?.url || '',
+        viewCount: views,
+        publishedAt: v.snippet.publishedAt,
+        duration: formatDuration(durationSec),
+        isShorts: durationSec > 0 && durationSec <= 180,
+        contribution,
+        contributionTier: rateTier(contribution, [0.3, 1, 3, 10]),
+        performance,
+        performanceTier: rateTier(performance, [0.3, 1, 3, 10]),
+      };
+    });
+    currentChannelDetail.popular.videos = items.filter(it => !it.isShorts).slice(0, 10);
+    currentChannelDetail.popular.shorts = items.filter(it => it.isShorts).slice(0, 10);
+    renderTopGrid();
+  } catch (err) {
+    grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderTopGrid() {
+  if (!currentChannelDetail) return;
+  const grid = $('cdTopGrid');
+  const items = currentTop10SubTab === 'shorts'
+    ? currentChannelDetail.popular.shorts
+    : currentChannelDetail.popular.videos;
+  if (!items) {
+    grid.innerHTML = '<p class="loading-text">로딩 중...</p>';
+    return;
+  }
+  if (!items.length) {
+    grid.innerHTML = `<p class="empty-text">${currentTop10SubTab === 'shorts' ? 'Shorts' : '동영상'} 결과 없음</p>`;
+    return;
+  }
+  grid.className = 'top10-grid';
+  grid.innerHTML = items.map(it => `
+    <a class="top10-item" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit">
+      <div class="top10-thumb">
+        <img src="${it.thumbnail}" alt="" loading="lazy" />
+        ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
+      </div>
+      <div class="top10-info">
+        <h5>${escapeHtml(it.title)}</h5>
+        <div class="top10-info-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
+      </div>
+      <div class="top10-stat">
+        <div class="top10-stat-label">기여도</div>
+        ${tierWithValue(it.contribution, it.contributionTier, 'x')}
+      </div>
+      <div class="top10-stat">
+        <div class="top10-stat-label">성과도</div>
+        ${tierWithValue(it.performance, it.performanceTier, 'x')}
+      </div>
+      <div class="top10-stat">
+        <div class="top10-stat-label">조회수</div>
+        <strong>${fmtCompact(it.viewCount)}</strong>
+      </div>
+    </a>
+  `).join('');
+}
+
+function renderChannelMiniGrid(grid, items) {
+  if (!items.length) {
+    grid.innerHTML = '<p class="empty-text">영상 없음</p>';
+    return;
+  }
+  grid.className = 'mini-grid';
+  grid.innerHTML = items.map(it => `
+    <a class="mini-card" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
+      <div class="mini-thumb">
+        <img src="${it.thumbnail}" alt="" loading="lazy" />
+        ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
+      </div>
+      <div class="mini-info">
+        <h5>${escapeHtml(it.title)}</h5>
+        <div class="mini-meta">${fmtCompact(it.viewCount)} views · 좋아요 ${fmtCompact(it.likeCount)} · ${fmtDate(it.publishedAt)}</div>
+      </div>
+    </a>
+  `).join('');
 }
 
 function buildSearchParams(q) {
@@ -1872,11 +2160,15 @@ const HISTORY_MAX = 200;
 function getHistory() {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY_HISTORY) || '[]');
-    // 이전 형식(string[]) → { q, at, count } 객체로 마이그레이션
+    // 이전 형식 마이그레이션: string[] / mode 없는 객체 → 영상 모드로 가정
     return raw.map(x => typeof x === 'string'
-      ? { q: x, at: 0, count: 1 }
-      : { q: x.q, at: x.at || 0, count: x.count || 1 });
+      ? { q: x, at: 0, count: 1, mode: 'video' }
+      : { mode: 'video', count: 1, at: 0, ...x });
   } catch { return []; }
+}
+
+function getHistoryForMode() {
+  return getHistory().filter(x => x.mode === searchMode);
 }
 
 function saveHistory(h) {
@@ -1885,20 +2177,20 @@ function saveHistory(h) {
 
 function pushHistory(q) {
   let h = getHistory();
-  const existing = h.find(x => x.q === q);
+  const existing = h.find(x => x.q === q && x.mode === searchMode);
   if (existing) {
     existing.at = Date.now();
     existing.count = (existing.count || 1) + 1;
-    h = [existing, ...h.filter(x => x.q !== q)];
+    h = [existing, ...h.filter(x => !(x.q === q && x.mode === searchMode))];
   } else {
-    h.unshift({ q, at: Date.now(), count: 1 });
+    h.unshift({ q, at: Date.now(), count: 1, mode: searchMode });
   }
   saveHistory(h);
   renderHistory();
 }
 
 function renderHistory() {
-  const h = getHistory();
+  const h = getHistoryForMode();
   const top = h.slice(0, 5);
   historyChips.innerHTML = top.map(item => `
     <span class="chip">
@@ -1930,7 +2222,8 @@ function renderHistory() {
 }
 
 function removeHistory(q) {
-  const h = getHistory().filter(x => x.q !== q);
+  // 현재 모드 기록에서만 제거
+  const h = getHistory().filter(x => !(x.q === q && x.mode === searchMode));
   saveHistory(h);
   renderHistory();
   if (!historyModal.classList.contains('hidden')) renderHistoryModal();
@@ -1944,10 +2237,11 @@ function openHistoryModal() {
 }
 
 function renderHistoryModal() {
-  const h = getHistory();
+  const h = getHistoryForMode();
   const filter = (historyFilter.value || '').trim().toLowerCase();
   const filtered = filter ? h.filter(item => item.q.toLowerCase().includes(filter)) : h;
-  $('historyHint').textContent = `총 ${h.length}개 · 최대 ${HISTORY_MAX}개까지 저장 · 클릭하면 다시 검색`;
+  const modeLabel = searchMode === 'channel' ? '채널' : '영상';
+  $('historyHint').textContent = `${modeLabel} 검색 기록 ${h.length}개 · 모드별 분리 저장 · 클릭하면 다시 검색`;
   const listEl = $('historyList');
   listEl.innerHTML = filtered.map(item => `
     <div class="history-item" data-q="${escapeHtml(item.q)}">
@@ -1977,11 +2271,14 @@ function renderHistoryModal() {
 }
 
 function clearAllHistory() {
-  if (!confirm('검색 기록을 모두 삭제하시겠습니까?')) return;
-  localStorage.removeItem(LS_KEY_HISTORY);
+  const modeLabel = searchMode === 'channel' ? '채널' : '영상';
+  if (!confirm(`${modeLabel} 검색 기록을 모두 삭제하시겠습니까? (다른 모드 기록은 유지됩니다)`)) return;
+  // 현재 모드 기록만 삭제, 다른 모드는 유지
+  const h = getHistory().filter(x => x.mode !== searchMode);
+  saveHistory(h);
   renderHistory();
   historyModal.classList.add('hidden');
-  showToast('🗑 검색 기록 삭제됨');
+  showToast(`🗑 ${modeLabel} 검색 기록 삭제됨`);
 }
 
 /* ───────── 국가 선택 ───────── */
@@ -2160,6 +2457,18 @@ function decodeHtml(s) {
   _decodeEl.innerHTML = String(s);
   return _decodeEl.value;
 }
+function showError(message, details) {
+  $('errorMessage').textContent = message || '알 수 없는 오류';
+  if (details) {
+    $('errorDetailsText').textContent = typeof details === 'string'
+      ? details : JSON.stringify(details, null, 2);
+    $('errorDetailsWrap').hidden = false;
+  } else {
+    $('errorDetailsWrap').hidden = true;
+  }
+  $('errorModal').classList.remove('hidden');
+}
+
 function showToast(msg) {
   toastEl.textContent = msg;
   toastEl.classList.remove('hidden');

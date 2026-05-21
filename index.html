@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -596,8 +596,102 @@
     </div>
   </div>
 
+  <!-- Channel detail modal -->
+  <div id="channelDetailModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel modal-panel-detail">
+      <header class="detail-head">
+        <nav class="detail-tabs" role="tablist">
+          <button class="detail-tab active" data-ctab="info" role="tab">채널 정보</button>
+          <button class="detail-tab" data-ctab="latest" role="tab">최신 업로드 영상</button>
+          <button class="detail-tab" data-ctab="top" role="tab">인기 TOP 10</button>
+        </nav>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="detail-body">
+        <!-- Tab: 채널 정보 -->
+        <div class="detail-pane" data-cpane="info">
+          <div class="channel-hero">
+            <img id="cdThumb" class="channel-avatar" alt="" />
+            <div class="channel-hero-info">
+              <h3 id="cdName"></h3>
+              <div class="cd-meta-row">
+                <span class="cd-chip" id="cdCountryChip"></span>
+                <a id="cdYTLink" class="detail-link-btn" target="_blank" rel="noopener">유튜브에서 채널 보기 →</a>
+              </div>
+            </div>
+          </div>
+          <div class="stat-cards-grid">
+            <div class="stat-card"><div class="stat-value" id="cdSubs">-</div><div class="stat-label">구독자</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdVideoCount">-</div><div class="stat-label">총 영상 수</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdDays">-</div><div class="stat-label">채널 개설</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdTotalViews">-</div><div class="stat-label">누적 조회수</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdAvgViews">-</div><div class="stat-label">평균 조회수</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdAvgLikes">-</div><div class="stat-label">평균 좋아요</div></div>
+          </div>
+          <div class="stat-cards-grid">
+            <div class="stat-card"><div class="stat-value" id="cdViewToSub">-</div><div class="stat-label">조회수대비 구독전환</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdDailySub">-</div><div class="stat-label">일평균 구독전환</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdVideoPerf">-</div><div class="stat-label">영상성과</div></div>
+            <div class="stat-card"><div class="stat-value" id="cdGrowthSpeed">-</div><div class="stat-label">성장속도</div></div>
+          </div>
+          <div class="cd-info-row">
+            <div class="channel-desc">
+              <h4>채널 정보</h4>
+              <p id="cdDescription">-</p>
+            </div>
+            <div class="channel-desc">
+              <h4>채널 태그</h4>
+              <p id="cdTags">-</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: 최신 업로드 영상 -->
+        <div class="detail-pane hidden" data-cpane="latest">
+          <h4 class="pane-heading">최신 업로드 영상</h4>
+          <div id="cdLatestGrid" class="mini-grid">
+            <p class="loading-text">탭을 누르면 로딩됩니다 (API quota 약 2 units)</p>
+          </div>
+        </div>
+
+        <!-- Tab: 인기 TOP 10 -->
+        <div class="detail-pane hidden" data-cpane="top">
+          <div class="top10-tabs">
+            <button class="top10-tab active" data-top10="videos" type="button">인기 동영상 TOP 10</button>
+            <button class="top10-tab" data-top10="shorts" type="button">인기 Shorts TOP 10</button>
+          </div>
+          <div id="cdTopGrid" class="mini-grid">
+            <p class="loading-text">탭을 누르면 로딩됩니다 (API quota 약 100 units)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error modal -->
+  <div id="errorModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel">
+      <header class="modal-head">
+        <h2 id="errorTitle">⚠️ 오류</h2>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="modal-body">
+        <p id="errorMessage" style="white-space:pre-wrap; line-height:1.6;"></p>
+        <details id="errorDetailsWrap" hidden style="margin-top:12px;">
+          <summary style="cursor:pointer; color:var(--gray-500); font-size:13px;">자세히</summary>
+          <pre id="errorDetailsText" style="margin-top:8px; padding:10px; background:var(--bg-alt); border-radius:8px; font-size:11px; overflow-x:auto; white-space:pre-wrap;"></pre>
+        </details>
+      </div>
+      <footer class="modal-foot">
+        <button class="primary-btn" data-close>확인</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=13"></script>
+  <script src="script.js?v=14"></script>
 </body>
 </html>
