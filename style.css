@@ -1073,6 +1073,118 @@ a { color: var(--green-dark); }
   .stat-cards-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* ────────────── Summary button + modal ────────────── */
+.th-summary { width: 80px; text-align: center; }
+
+.summary-btn {
+  background: linear-gradient(135deg, #a855f7, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: transform 0.1s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+.summary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+.summary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.summary-btn.has-cache {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+}
+
+.modal-panel-summary {
+  max-width: 680px;
+  max-height: 90vh;
+}
+.summary-meta {
+  padding: 12px 16px;
+  background: var(--bg-alt);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.summary-meta .summary-title-text {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.summary-meta .summary-channel {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
+.summary-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--gray-900);
+  min-height: 200px;
+}
+.summary-content p {
+  margin: 0 0 12px;
+}
+.summary-content ul {
+  padding-left: 20px;
+  margin: 0 0 12px;
+}
+.summary-content li {
+  margin-bottom: 6px;
+}
+.summary-content strong { font-weight: 700; }
+.summary-content .summary-section {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--green-dark);
+  margin-top: 16px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.summary-loading, .summary-error {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--gray-500);
+}
+.summary-loading p { margin: 12px 0 4px; }
+.summary-error {
+  background: var(--red-soft);
+  color: var(--red);
+  border-radius: 10px;
+}
+
+/* Spinner */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.key-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-700);
+  margin: 0 0 8px;
+}
+
 /* ────────────── Toast ────────────── */
 .toast {
   position: fixed;

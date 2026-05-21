@@ -4,9 +4,12 @@
  * ───────────────────────────────────────────── */
 
 const LS_KEY_API = 'ytkw:apiKey';
+const LS_KEY_GEMINI = 'ytkw:geminiKey';
 const LS_KEY_HISTORY = 'ytkw:history';
 const LS_KEY_THEME = 'ytkw:theme';
 const LS_KEY_VIEW = 'ytkw:viewMode';
+const LS_KEY_SUMMARY = 'ytkw:summary:';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,6 +35,12 @@ const tableWrap      = $('tableWrap');
 const cardGrid       = $('cardGrid');
 const resultsControls = $('resultsControls');
 const detailModal    = $('detailModal');
+const summaryModal   = $('summaryModal');
+const summaryMeta    = $('summaryMeta');
+const summaryContent = $('summaryContent');
+const summaryCopyBtn = $('summaryCopyBtn');
+const summaryRegenBtn = $('summaryRegenBtn');
+const geminiKeyInput = $('geminiKeyInput');
 const resultCountEl  = $('resultCount');
 const thumbCount     = $('thumbCount');
 const progressBar    = $('progressBar');
@@ -51,6 +60,7 @@ let filters = freshFilters();
 let viewMode = localStorage.getItem(LS_KEY_VIEW) || 'table';
 let activePreset = null;
 let currentDetail = null; // { result, recent, popular }
+let currentSummaryVideo = null;
 
 function freshFilters() {
   return {
@@ -116,6 +126,18 @@ function bindEvents() {
   [tableWrap, cardGrid].forEach(container => {
     container.addEventListener('click', handleResultClick);
   });
+
+  // 요약 버튼
+  tableWrap.addEventListener('click', (e) => {
+    const btn = e.target.closest('.summary-btn[data-summary-id]');
+    if (!btn) return;
+    e.stopPropagation();
+    const id = btn.dataset.summaryId;
+    const r = allResults.find(x => x.videoId === id);
+    if (r) openSummary(r);
+  });
+  summaryCopyBtn.addEventListener('click', copySummary);
+  summaryRegenBtn.addEventListener('click', regenerateSummary);
 
   // 디테일 모달 탭 + 액션
   detailModal.querySelector('.detail-tabs').addEventListener('click', (e) => {
@@ -255,9 +277,10 @@ function setViewMode(mode) {
 
 /* ───────── 영상 디테일 모달 ───────── */
 function handleResultClick(e) {
+  // 요약 버튼/체크박스 클릭은 무시
+  if (e.target.closest('.summary-btn, input[type="checkbox"]')) return;
   const trigger = e.target.closest('[data-detail-id]');
   if (!trigger) return;
-  // 모디파이어/가운데클릭이면 브라우저 기본 동작 (새 탭 등) 허용
   if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
   const id = trigger.dataset.detailId;
@@ -473,6 +496,202 @@ function handleQuickAction(action) {
 
 function escapeText(s) { return String(s ?? ''); }
 
+/* ───────── Gemini 요약 ───────── */
+function hasCachedSummary(videoId) {
+  return !!localStorage.getItem(LS_KEY_SUMMARY + videoId);
+}
+
+function getCachedSummary(videoId) {
+  try {
+    const raw = localStorage.getItem(LS_KEY_SUMMARY + videoId);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveCachedSummary(videoId, text) {
+  try {
+    localStorage.setItem(LS_KEY_SUMMARY + videoId, JSON.stringify({
+      text, generatedAt: Date.now()
+    }));
+  } catch (err) {
+    console.warn('요약 저장 실패 (용량 초과 가능)', err);
+  }
+}
+
+async function openSummary(result) {
+  currentSummaryVideo = result;
+  summaryMeta.innerHTML = `
+    <div class="summary-title-text">${escapeHtml(result.title)}</div>
+    <div class="summary-channel">${escapeHtml(result.channelTitle)} · ${fmtCompact(result.viewCount)} views · ${fmtDate(result.publishedAt)}</div>
+  `;
+  summaryModal.classList.remove('hidden');
+
+  const cached = getCachedSummary(result.videoId);
+  if (cached) {
+    renderSummary(cached.text);
+    return;
+  }
+  await generateSummary(result, false);
+}
+
+async function regenerateSummary() {
+  if (!currentSummaryVideo) return;
+  localStorage.removeItem(LS_KEY_SUMMARY + currentSummaryVideo.videoId);
+  await generateSummary(currentSummaryVideo, true);
+}
+
+async function generateSummary(result, force) {
+  const geminiKey = getGeminiKey();
+  if (!geminiKey) {
+    summaryContent.innerHTML = `
+      <div class="summary-error">
+        <p>⚠️ Gemini API 키가 설정되지 않았습니다.</p>
+        <p>우상단 "🔑 API 키" → Gemini API 키 입력 → 저장</p>
+        <p class="hint-small">무료 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></p>
+      </div>`;
+    return;
+  }
+
+  summaryContent.innerHTML = `
+    <div class="summary-loading">
+      <div class="spinner"></div>
+      <p>Gemini가 영상을 분석 중...</p>
+      <p class="hint-small">영상 길이에 따라 10초~1분 정도 걸립니다</p>
+    </div>
+  `;
+
+  const prompt = buildSummaryPrompt(result);
+  const youtubeUrl = `https://www.youtube.com/watch?v=${result.videoId}`;
+
+  try {
+    // 1차: YouTube URL 직접 분석 (Gemini가 영상 자체를 봄)
+    const text = await callGemini(geminiKey, prompt, youtubeUrl);
+    saveCachedSummary(result.videoId, text);
+    renderSummary(text);
+    // 캐시 상태 반영 위해 테이블 재렌더
+    if (viewMode === 'table' && displayResults.length) renderTable();
+  } catch (err) {
+    console.error(err);
+    // 2차: 영상 분석 실패 → 텍스트만으로 요약 시도
+    try {
+      const fallbackPrompt = buildFallbackPrompt(result);
+      const text = await callGemini(geminiKey, fallbackPrompt, null);
+      saveCachedSummary(result.videoId, '⚠️ 영상 본체 분석 실패 → 제목/설명 기반 요약\n\n' + text);
+      renderSummary(text);
+      if (viewMode === 'table' && displayResults.length) renderTable();
+    } catch (err2) {
+      summaryContent.innerHTML = `
+        <div class="summary-error">
+          <p>요약 실패: ${escapeHtml(err2.message || err.message)}</p>
+        </div>`;
+    }
+  }
+}
+
+function buildSummaryPrompt(r) {
+  return [
+    `다음 YouTube 영상을 한국어로 분석해주세요.`,
+    ``,
+    `[영상 정보]`,
+    `제목: ${r.title}`,
+    `채널: ${r.channelTitle} (구독자 ${fmtCompact(r.subscriberCount)})`,
+    `조회수: ${fmtCompact(r.viewCount)} · 게시 ${r.days}일 전 · ${r.duration || ''}`,
+    ``,
+    `[요청 형식]`,
+    `한줄 요약: (영상 한 줄 핵심)`,
+    ``,
+    `핵심 내용:`,
+    `- (불릿 4-6개, 영상에서 다룬 주요 내용)`,
+    ``,
+    `왜 잘됐나/왜 안됐나:`,
+    `(이 영상의 조회수 패턴에 대한 1-2문장 분석)`,
+    ``,
+    `톤: (정보형/감성적/코믹/리뷰/튜토리얼 등 한 단어)`,
+    ``,
+    `마크다운 없이, 순수 텍스트로 작성. 200-400자.`,
+  ].join('\n');
+}
+
+function buildFallbackPrompt(r) {
+  return [
+    `다음 YouTube 영상을 한국어로 요약해주세요. 영상 본체는 볼 수 없고, 제목과 설명만 보고 추측해주세요.`,
+    ``,
+    `제목: ${r.title}`,
+    `채널: ${r.channelTitle}`,
+    `설명: ${(r.description || '').slice(0, 1500)}`,
+    `태그: ${(r.tags || []).slice(0, 20).join(', ')}`,
+    ``,
+    `[요청]`,
+    `- 한줄 요약 (제목/설명 기반)`,
+    `- 다룰 것으로 추정되는 핵심 내용 3-5개 불릿`,
+    `- 영상 톤/스타일 추정`,
+    ``,
+    `마크다운 없이 순수 텍스트로.`,
+  ].join('\n');
+}
+
+async function callGemini(apiKey, prompt, youtubeUrl) {
+  const parts = [{ text: prompt }];
+  if (youtubeUrl) {
+    parts.push({ fileData: { fileUri: youtubeUrl } });
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    const msg = data.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).filter(Boolean).join('\n').trim();
+  if (!text) throw new Error('빈 응답');
+  return text;
+}
+
+function renderSummary(text) {
+  // 마크다운-라이트: 줄별 처리, '- '로 시작은 리스트, 'X:' 패턴은 섹션 헤더로
+  const lines = text.split('\n');
+  const out = [];
+  let inList = false;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      continue;
+    }
+    const t = line.trim();
+    if (/^[-•*]\s/.test(t)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push(`<li>${escapeHtml(t.replace(/^[-•*]\s/, ''))}</li>`);
+      continue;
+    }
+    if (inList) { out.push('</ul>'); inList = false; }
+    // "한줄 요약:" 같은 섹션 헤더 감지
+    const m = t.match(/^(한줄 요약|핵심 내용|왜 잘됐나|왜 안됐나|왜 잘됐나\/왜 안됐나|톤|시청자 반응|영상 톤|영상 스타일)\s*[:：]\s*(.*)/);
+    if (m) {
+      out.push(`<div class="summary-section">${escapeHtml(m[1])}</div>`);
+      if (m[2]) out.push(`<p>${escapeHtml(m[2])}</p>`);
+      continue;
+    }
+    out.push(`<p>${escapeHtml(t)}</p>`);
+  }
+  if (inList) out.push('</ul>');
+  summaryContent.innerHTML = out.join('');
+}
+
+function copySummary() {
+  const text = summaryContent.innerText.trim();
+  if (!text) return;
+  navigator.clipboard.writeText(text);
+  showToast('📋 요약 복사됨');
+}
+
 /* ───────── 테마 ───────── */
 function toggleTheme() {
   const current = document.documentElement.dataset.theme;
@@ -484,25 +703,32 @@ function toggleTheme() {
 
 /* ───────── API 키 모달 ───────── */
 function getApiKey() { return localStorage.getItem(LS_KEY_API) || ''; }
+function getGeminiKey() { return localStorage.getItem(LS_KEY_GEMINI) || ''; }
 
 function openApiKeyModal() {
   apiKeyInput.value = getApiKey();
+  geminiKeyInput.value = getGeminiKey();
   apiKeyModal.classList.remove('hidden');
   setTimeout(() => apiKeyInput.focus(), 50);
 }
 
 function saveApiKey() {
-  const v = apiKeyInput.value.trim();
-  if (!v) { showToast('빈 값입니다'); return; }
-  localStorage.setItem(LS_KEY_API, v);
+  const yt = apiKeyInput.value.trim();
+  const gem = geminiKeyInput.value.trim();
+  let saved = [];
+  if (yt) { localStorage.setItem(LS_KEY_API, yt); saved.push('YouTube'); }
+  if (gem) { localStorage.setItem(LS_KEY_GEMINI, gem); saved.push('Gemini'); }
   apiKeyModal.classList.add('hidden');
-  showToast('✅ API 키 저장 완료');
+  if (saved.length) showToast(`✅ ${saved.join(' + ')} 키 저장`);
+  else showToast('변경 사항 없음');
 }
 
 function clearApiKey() {
   localStorage.removeItem(LS_KEY_API);
+  localStorage.removeItem(LS_KEY_GEMINI);
   apiKeyInput.value = '';
-  showToast('🗑️ API 키 삭제됨');
+  geminiKeyInput.value = '';
+  showToast('🗑️ 모든 API 키 삭제됨');
 }
 
 /* ───────── 검색 ───────── */
@@ -741,6 +967,11 @@ function renderTable() {
       </td>
       <td>
         <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">${escapeHtml(r.title)}</a>
+      </td>
+      <td style="text-align:center">
+        <button class="summary-btn ${hasCachedSummary(r.videoId) ? 'has-cache' : ''}" data-summary-id="${r.videoId}" type="button" title="${hasCachedSummary(r.videoId) ? '저장된 요약 보기' : 'Gemini로 영상 요약'}">
+          ✨ ${hasCachedSummary(r.videoId) ? '요약' : '요약'}
+        </button>
       </td>
       <td class="num-cell">${fmt(r.viewCount)}</td>
       <td class="num-cell">${fmtVPH(r.vph)}</td>

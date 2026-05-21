@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -135,6 +135,7 @@
             <th class="cb"><input type="checkbox" id="selectAll" /></th>
             <th class="th-thumb">썸네일 <span class="thumb-count" id="thumbCount"></span></th>
             <th class="th-title">제목</th>
+            <th class="th-summary">요약</th>
             <th class="sortable num" data-sort="viewCount">조회수</th>
             <th class="sortable num" data-sort="vph" title="Views Per Hour (시간당 조회수)">VPH</th>
             <th class="sortable num" data-sort="subscriberCount">구독자</th>
@@ -263,18 +264,27 @@
         <button class="modal-close" data-close aria-label="닫기">×</button>
       </header>
       <div class="modal-body">
+        <h3 class="key-section-title">YouTube Data API v3</h3>
         <p class="hint">
-          Google Cloud Console에서 발급한 <strong>YouTube Data API v3</strong> 키를 입력하세요.
-          키는 <strong>이 브라우저의 localStorage에만 저장</strong>되고, 외부 서버로 전송되지 않습니다.
+          영상 검색에 필요한 키입니다. 키는 <strong>이 브라우저의 localStorage에만 저장</strong>되고, 외부 서버로 전송되지 않습니다.
         </p>
         <input type="text" id="apiKeyInput" placeholder="AIzaSy..." class="text-input-lg" />
         <p class="hint-small">
-          키 발급: <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> →
-          API 및 서비스 → 라이브러리 → "YouTube Data API v3" 검색 → 사용 설정 → 사용자 인증 정보 → API 키 만들기
+          발급: <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> →
+          API 및 서비스 → 라이브러리 → "YouTube Data API v3" 사용 설정 → API 키 만들기
+        </p>
+
+        <h3 class="key-section-title" style="margin-top:24px">Gemini API (영상 요약용 · 선택)</h3>
+        <p class="hint">
+          ✨ "요약" 버튼으로 영상을 Gemini AI가 분석하게 하려면 필요합니다. 무료 발급 가능.
+        </p>
+        <input type="text" id="geminiKeyInput" placeholder="AIzaSy..." class="text-input-lg" />
+        <p class="hint-small">
+          발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> → "Create API key"
         </p>
       </div>
       <footer class="modal-foot">
-        <button class="link-btn" id="apiKeyClearBtn">키 삭제</button>
+        <button class="link-btn" id="apiKeyClearBtn">키 모두 삭제</button>
         <button class="primary-btn" id="apiKeySaveBtn">저장</button>
       </footer>
     </div>
@@ -411,8 +421,33 @@
     </div>
   </div>
 
+  <!-- Summary modal (Gemini) -->
+  <div id="summaryModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel modal-panel-summary">
+      <header class="modal-head">
+        <h2>✨ Gemini 영상 요약</h2>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="summary-meta" id="summaryMeta"></div>
+        <div class="summary-content" id="summaryContent">
+          <div class="summary-loading">
+            <div class="spinner"></div>
+            <p>Gemini가 영상을 분석 중...</p>
+            <p class="hint-small">영상 길이에 따라 10초~1분 정도 걸립니다</p>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-foot">
+        <button class="link-btn" id="summaryCopyBtn">📋 복사</button>
+        <button class="link-btn" id="summaryRegenBtn">🔄 다시 요약</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=4"></script>
+  <script src="script.js?v=5"></script>
 </body>
 </html>
