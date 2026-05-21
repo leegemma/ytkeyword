@@ -259,6 +259,13 @@ function bindEvents() {
   historyFilter.addEventListener('input', renderHistoryModal);
   $('clearAllHistoryBtn').addEventListener('click', clearAllHistory);
 
+  // 설정 변경 시 자동 재검색
+  [maxResultsEl, videoDurationEl, periodEl].forEach(el => {
+    el.addEventListener('change', triggerSettingsResearch);
+  });
+  // 정렬 기준: 클라이언트 정렬은 재검색 안 함, 서버 정렬은 재검색
+  sortOrderEl.addEventListener('change', handleSortOrderChange);
+
   // 국가 선택기 (플래그)
   regionFlagBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1764,8 +1771,36 @@ function setRegion(code) {
   localStorage.setItem(LS_KEY_REGION, code);
   applyRegionFlag();
   regionPopover.hidden = true;
-  const r = REGIONS.find(x => x.code === code);
-  showToast(`${r.flag} ${r.label} 검색으로 변경됨`);
+  triggerSettingsResearch();
+}
+
+function triggerSettingsResearch() {
+  if (!hasSearched) return;
+  const q = keywordInput.value.trim();
+  if (!q) return;
+  showToast('🔄 조건 변경 — 재검색 중...');
+  onSearch();
+}
+
+function handleSortOrderChange() {
+  if (!hasSearched) return;
+  const q = keywordInput.value.trim();
+  if (!q) return;
+  const v = sortOrderEl.value;
+  // 클라이언트 정렬: 재검색 없이 즉시 재정렬
+  if (v === 'performance' || v === 'recent') {
+    const keyMap = { performance: 'performance', recent: 'recentPerformance' };
+    currentSort = { key: keyMap[v], dir: 'desc' };
+    activePreset = null;
+    savedSortBeforePreset = null;
+    savedSortOrderBeforePreset = null;
+    refreshPresetChips();
+    sortResults();
+    renderResults();
+  } else {
+    // YouTube API 정렬 (relevance/date/viewCount): 재검색 필요
+    triggerSettingsResearch();
+  }
 }
 
 function timeAgo(ts) {
