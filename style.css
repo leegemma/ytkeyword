@@ -1969,6 +1969,114 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   margin-left: auto;
 }
 
+/* ────────────── Growth chart (추정 누적 조회수) ────────────── */
+.growth-section {
+  margin-top: 20px;
+  padding: 18px;
+  background: var(--bg-alt);
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+}
+.growth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.growth-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.growth-total {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--gray-900);
+}
+.growth-mode {
+  background: var(--bg);
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--gray-700);
+  cursor: not-allowed;
+}
+.growth-disclaimer {
+  font-size: 11px;
+  color: var(--orange);
+  background: rgba(245,158,11,0.12);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.growth-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--gray-200);
+}
+.growth-tab {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.growth-tab:hover { color: var(--gray-700); }
+.growth-tab.active {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+.growth-tab.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.growth-chart {
+  height: 280px;
+  margin-top: 8px;
+}
+.growth-chart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Mini card save 버튼 */
+.mini-save-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+.mini-save-btn:hover {
+  background: var(--orange);
+}
+.mini-save-btn.saved {
+  background: var(--orange);
+  color: #fff;
+}
+.result-card { position: relative; }
+
 /* ────────────── Toast ────────────── */
 .toast {
   position: fixed;

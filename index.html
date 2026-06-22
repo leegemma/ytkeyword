@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=21" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -452,6 +452,24 @@
             </div>
           </div>
 
+          <!-- 누적 조회수 추정 그래프 -->
+          <section class="growth-section">
+            <header class="growth-header">
+              <div class="growth-title-row">
+                <span class="growth-total" id="growthTotal">-</span>
+                <select class="growth-mode" disabled><option>Total views (추정)</option></select>
+              </div>
+              <span class="growth-disclaimer">⚠️ 추정 곡선 — 실시간 추적 아님</span>
+            </header>
+            <nav class="growth-tabs" id="growthTabs">
+              <button class="growth-tab" data-range="1" type="button">24 hours</button>
+              <button class="growth-tab" data-range="7" type="button">1st 7 days</button>
+              <button class="growth-tab" data-range="28" type="button">1st 28 days</button>
+              <button class="growth-tab active" data-range="all" type="button">All</button>
+            </nav>
+            <div id="growthChart" class="growth-chart"></div>
+          </section>
+
           <!-- Hidden legacy elements for backward compatibility -->
           <span id="statOutlier" hidden></span>
           <span id="statVph" hidden></span>
@@ -756,6 +774,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=20"></script>
+  <script src="script.js?v=21"></script>
 </body>
 </html>

@@ -132,6 +132,7 @@ let savedSortBeforePreset = null;
 let savedSortOrderBeforePreset = null;
 let currentDetail = null; // { result, recent, popular }
 let currentSummaryVideo = null;
+let currentVideoChart = null; // { viewCount, ageDays }
 let selectedIds = new Set();
 let blockedVideos = new Set(JSON.parse(localStorage.getItem(LS_KEY_BLOCKED_VIDEOS) || '[]'));
 let blockedChannels = new Set(); // { id: name } 매핑은 별도
@@ -344,6 +345,33 @@ function bindEvents() {
   const cdt = $('cdSaveToggle');
   if (cdt) cdt.addEventListener('click', () => {
     if (currentChannelDetail?.channel) toggleSaveChannel(currentChannelDetail.channel.channelId);
+  });
+
+  // mini 카드 저장 버튼 (모든 모달 내 미니 그리드)
+  [detailModal, channelDetailModal, savedListModal].forEach(modal => {
+    if (!modal) return;
+    modal.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mini-save-btn[data-mini-save]');
+      if (!btn) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const id = btn.dataset.miniSave;
+      const info = findMiniVideoInfo(id);
+      toggleSave(id, info);
+    });
+  });
+
+  // 그래프 탭
+  const gtabs = $('growthTabs');
+  if (gtabs) gtabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.growth-tab');
+    if (!tab || tab.classList.contains('disabled')) return;
+    document.querySelectorAll('#growthTabs .growth-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    if (currentVideoChart) {
+      const range = tab.dataset.range === 'all' ? 'all' : Number(tab.dataset.range);
+      drawGrowthChart(currentVideoChart.viewCount, currentVideoChart.ageDays, range);
+    }
   });
 
   // 검색 기록
@@ -660,6 +688,9 @@ function populateVideoTab(r) {
     : '-';
   $('statDays').textContent = (r.days || 0) + '일';
   $('statDuration').textContent = r.duration || '-';
+
+  // 누적 조회수 추정 그래프
+  initGrowthChart(r);
 
   // 태그 + 설명
   const tagsHtml = (r.tags && r.tags.length)
@@ -1236,9 +1267,9 @@ function persistSaved() {
   localStorage.setItem(LS_KEY_SAVED_VIDEOS, JSON.stringify(savedVideos));
 }
 
-function toggleSave(videoId) {
-  // 결과 목록에서 찾거나 savedVideos에서 찾기
-  const fromResults = allResults.find(r => r.videoId === videoId);
+function toggleSave(videoId, fallbackInfo) {
+  // 결과 목록 우선, 없으면 fallback (미니 카드 등)
+  const fromResults = allResults.find(r => r.videoId === videoId) || fallbackInfo;
   if (savedVideoIds.has(videoId)) {
     // 저장 해제
     savedVideoIds.delete(videoId);
@@ -1287,6 +1318,12 @@ function updateSaveButtons(videoId, isSaved) {
   });
   // 카드의 card-save-btn
   document.querySelectorAll(`.card-save-btn[data-save-id="${CSS.escape(videoId)}"]`).forEach(b => {
+    b.classList.toggle('saved', isSaved);
+    b.textContent = isSaved ? '★' : '☆';
+    b.title = isSaved ? '저장 해제' : '저장';
+  });
+  // 미니 카드의 mini-save-btn (인기/최신/저장 목록 등)
+  document.querySelectorAll(`.mini-save-btn[data-mini-save="${CSS.escape(videoId)}"]`).forEach(b => {
     b.classList.toggle('saved', isSaved);
     b.textContent = isSaved ? '★' : '☆';
     b.title = isSaved ? '저장 해제' : '저장';
@@ -1750,6 +1787,99 @@ async function detectAspectsForResults(results) {
   }
 }
 
+/* ───────── 누적 조회수 추정 그래프 ───────── */
+function initGrowthChart(r) {
+  const ageDays = Math.max(1, r.days || 1);
+  currentVideoChart = { viewCount: r.viewCount, ageDays };
+  $('growthTotal').textContent = fmtCompact(r.viewCount);
+
+  // 영상 게시 기간에 따라 적절한 탭만 활성화
+  const tabs = document.querySelectorAll('#growthTabs .growth-tab');
+  tabs.forEach(t => {
+    t.classList.remove('active');
+    const range = t.dataset.range;
+    if (range === 'all') {
+      t.classList.remove('disabled');
+    } else {
+      const n = Number(range);
+      t.classList.toggle('disabled', n > ageDays);
+    }
+  });
+  // 기본 활성 탭: All (또는 가장 큰 가능 값)
+  let initial = 'all';
+  if (ageDays < 1) initial = '1';
+  else if (ageDays < 7) initial = '7';
+  else if (ageDays < 28) initial = '28';
+  else initial = 'all';
+  const initialTab = document.querySelector(`#growthTabs .growth-tab[data-range="${initial}"]`);
+  if (initialTab) initialTab.classList.add('active');
+
+  const range = initial === 'all' ? 'all' : Number(initial);
+  drawGrowthChart(r.viewCount, ageDays, range);
+}
+
+function drawGrowthChart(viewCount, ageDays, rangeDays) {
+  const svg = $('growthChart');
+  if (!svg) return;
+  const range = rangeDays === 'all' ? ageDays : Math.min(rangeDays, ageDays);
+  const total = viewCount || 0;
+
+  // 곡선 데이터: log 누적 모델
+  // cumViews(t) = total * log(1+t) / log(1+ageDays)
+  const N = 100;
+  const points = [];
+  const denom = Math.log(1 + ageDays) || 1;
+  for (let i = 0; i <= N; i++) {
+    const t = (range * i) / N;
+    const v = total * Math.log(1 + t) / denom;
+    points.push({ t, v });
+  }
+  const maxY = points[points.length - 1].v || 1;
+
+  const W = 720, H = 280;
+  const pad = { left: 20, right: 65, top: 20, bottom: 32 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+
+  const xs = points.map(p => pad.left + (p.t / range) * cw);
+  const ys = points.map(p => pad.top + ch - (p.v / maxY) * ch);
+  let path = '';
+  for (let i = 0; i < points.length; i++) {
+    path += (i === 0 ? 'M' : ' L') + xs[i].toFixed(1) + ',' + ys[i].toFixed(1);
+  }
+
+  const yLabels = [0, 0.25, 0.5, 0.75, 1];
+  const xLabels = [0, 0.5, 1];
+
+  svg.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${yLabels.map(f => {
+        const y = pad.top + ch * (1 - f);
+        return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${W - pad.right}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.15" stroke-width="1"/>`;
+      }).join('')}
+      <path d="${path} L${xs[xs.length-1].toFixed(1)},${(pad.top + ch).toFixed(1)} L${xs[0].toFixed(1)},${(pad.top + ch).toFixed(1)} Z" fill="url(#growthGrad)"/>
+      <path d="${path}" stroke="#3b82f6" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${xs[xs.length-1].toFixed(1)}" cy="${ys[ys.length-1].toFixed(1)}" r="5" fill="#3b82f6"/>
+      ${yLabels.map(f => {
+        const y = pad.top + ch * (1 - f);
+        const v = maxY * f;
+        return `<text x="${W - pad.right + 6}" y="${(y + 4).toFixed(1)}" font-size="11" fill="currentColor" fill-opacity="0.6" font-family="sans-serif">${fmtCompact(Math.round(v))}</text>`;
+      }).join('')}
+      ${xLabels.map(f => {
+        const x = pad.left + cw * f;
+        const day = Math.round(range * f);
+        return `<text x="${x.toFixed(1)}" y="${H - 10}" font-size="11" fill="currentColor" fill-opacity="0.6" text-anchor="${f === 0 ? 'start' : (f === 1 ? 'end' : 'middle')}" font-family="sans-serif">${day === 0 ? '0' : day + 'D'}</text>`;
+      }).join('')}
+    </svg>
+  `;
+}
+
 /* ───────── 채널 검색 ───────── */
 async function onSearchChannels(q, apiKey) {
   hasSearched = true;
@@ -2201,44 +2331,82 @@ function renderTopGrid() {
     return;
   }
   grid.className = 'top10-grid';
-  grid.innerHTML = items.map(it => `
-    <a class="top10-item" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit">
-      <div class="top10-thumb">
+  grid.innerHTML = items.map(it => {
+    const isSaved = savedVideoIds.has(it.videoId);
+    return `
+    <div class="top10-item" style="position:relative">
+      <a class="top10-thumb" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
-      </div>
-      <div class="top10-info">
-        <h5>${escapeHtml(it.title)}</h5>
-        <div class="top10-info-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
-      </div>
-      <div class="top10-stat">
-        <div class="top10-stat-label">기여도</div>
-        ${tierWithValue(it.contribution, it.contributionTier, 'x')}
-      </div>
-      <div class="top10-stat">
-        <div class="top10-stat-label">성과도</div>
-        ${tierWithValue(it.performance, it.performanceTier, 'x')}
-      </div>
-      <div class="top10-stat">
-        <div class="top10-stat-label">조회수</div>
-        <strong>${fmtCompact(it.viewCount)}</strong>
-      </div>
-    </a>
-  `).join('');
+      </a>
+      <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}" style="top:6px; right:auto; left:6px">${isSaved ? '★' : '☆'}</button>
+      <a href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit; display:contents">
+        <div class="top10-info">
+          <h5>${escapeHtml(it.title)}</h5>
+          <div class="top10-info-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
+        </div>
+        <div class="top10-stat">
+          <div class="top10-stat-label">기여도</div>
+          ${tierWithValue(it.contribution, it.contributionTier, 'x')}
+        </div>
+        <div class="top10-stat">
+          <div class="top10-stat-label">성과도</div>
+          ${tierWithValue(it.performance, it.performanceTier, 'x')}
+        </div>
+        <div class="top10-stat">
+          <div class="top10-stat-label">조회수</div>
+          <strong>${fmtCompact(it.viewCount)}</strong>
+        </div>
+      </a>
+    </div>
+  `;
+  }).join('');
+}
+
+function findMiniVideoInfo(videoId) {
+  const sources = [
+    currentDetail?.recent, currentDetail?.popular,
+    currentChannelDetail?.latest,
+    currentChannelDetail?.popular?.videos, currentChannelDetail?.popular?.shorts,
+    savedVideos,
+  ];
+  for (const arr of sources) {
+    if (!Array.isArray(arr)) continue;
+    const found = arr.find(it => it.videoId === videoId);
+    if (found) {
+      // 채널 정보 보충 (mini 카드는 channelId 없을 수도)
+      const channelCtx = currentDetail?.result || currentChannelDetail?.channel;
+      return {
+        videoId: found.videoId,
+        title: found.title,
+        thumbnail: found.thumbnail,
+        duration: found.duration,
+        viewCount: found.viewCount,
+        publishedAt: found.publishedAt,
+        isShorts: found.isShorts,
+        isPortrait: found.isPortrait,
+        channelId: found.channelId || channelCtx?.channelId,
+        channelTitle: found.channelTitle || channelCtx?.channelTitle || channelCtx?.name,
+      };
+    }
+  }
+  return null;
 }
 
 function miniCardHtml(it, isPortrait) {
+  const isSaved = savedVideoIds.has(it.videoId);
   return `
-    <a class="result-card${isPortrait ? ' result-card-portrait' : ''}" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit">
-      <div class="card-thumb">
+    <div class="result-card${isPortrait ? ' result-card-portrait' : ''}" data-mini-id="${escapeHtml(it.videoId)}">
+      <a class="card-thumb" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
-      </div>
+      </a>
+      <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
       <div class="card-info">
         <h3 class="card-title">${escapeHtml(it.title)}</h3>
         <div class="card-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}${it.likeCount ? ` · 좋아요 ${fmtCompact(it.likeCount)}` : ''}</div>
       </div>
-    </a>
+    </div>
   `;
 }
 
