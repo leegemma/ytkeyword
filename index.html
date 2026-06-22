@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=18" />
+  <link rel="stylesheet" href="style.css?v=19" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -356,9 +356,14 @@
         </p>
         <div class="backup-actions">
           <button class="ghost-btn" id="exportDataBtn" type="button">⬇️ 백업 다운로드</button>
-          <button class="ghost-btn" id="importDataBtn" type="button">⬆️ 백업 불러오기</button>
+          <button class="ghost-btn" id="importDataBtn" type="button">⬆️ 덮어쓰기 복원</button>
+          <button class="ghost-btn" id="mergeDataBtn" type="button">🔀 병합 복원</button>
           <input type="file" id="importDataInput" accept=".json,application/json" hidden />
         </div>
+        <p class="hint-small" style="margin-top:6px">
+          <strong>덮어쓰기</strong>: 현재 데이터를 백업 파일 내용으로 교체 ·
+          <strong>병합</strong>: 백업의 저장/차단/기록을 현재 데이터에 추가 (중복 자동 제거)
+        </p>
       </div>
       <footer class="modal-foot">
         <button class="link-btn" id="apiKeyClearBtn">키 모두 삭제</button>
@@ -751,6 +756,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=18"></script>
+  <script src="script.js?v=19"></script>
 </body>
 </html>

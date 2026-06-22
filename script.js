@@ -316,12 +316,20 @@ function bindEvents() {
     b.addEventListener('click', () => switchSavedTab(b.dataset.savedtab));
   });
   // 데이터 백업 / 복원
+  let pendingImportMode = 'replace';
   $('exportDataBtn').addEventListener('click', exportData);
-  $('importDataBtn').addEventListener('click', () => $('importDataInput').click());
+  $('importDataBtn').addEventListener('click', () => {
+    pendingImportMode = 'replace';
+    $('importDataInput').click();
+  });
+  $('mergeDataBtn').addEventListener('click', () => {
+    pendingImportMode = 'merge';
+    $('importDataInput').click();
+  });
   $('importDataInput').addEventListener('change', (e) => {
     const f = e.target.files[0];
-    if (f) importData(f);
-    e.target.value = ''; // 같은 파일 다시 선택 가능하게
+    if (f) importData(f, pendingImportMode);
+    e.target.value = '';
   });
 
   // 디테일 모달 저장 토글들
@@ -2900,12 +2908,11 @@ function exportData() {
   showToast(`💾 ${count}개 항목 백업됨`);
 }
 
-function importData(file) {
+function importData(file, mode) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const parsed = JSON.parse(e.target.result);
-      // 두 가지 형식 지원: { _meta, data: {...} } 또는 { ytkw:* 키: ... } 직접
       const data = (parsed && typeof parsed.data === 'object') ? parsed.data : parsed;
       if (typeof data !== 'object' || Array.isArray(data) || !data) {
         showError('잘못된 백업 파일 형식입니다.');
@@ -2918,19 +2925,25 @@ function importData(file) {
       }
       const meta = parsed._meta || {};
       const when = meta.exportedAt ? new Date(meta.exportedAt).toLocaleString('ko-KR') : '시점 미상';
+      const modeLabel = mode === 'merge' ? '병합 (중복 제거 후 추가)' : '덮어쓰기 (기존 → 백업으로 교체)';
       if (!confirm(
         `백업 파일 정보:\n` +
         `· 항목 수: ${keys.length}개\n` +
-        `· 백업 시점: ${when}\n\n` +
-        `현재 데이터를 덮어씁니다. 계속할까요?`
+        `· 백업 시점: ${when}\n` +
+        `· 복원 방식: ${modeLabel}\n\n` +
+        `계속할까요?`
       )) return;
 
-      keys.forEach(k => {
-        const v = data[k];
-        if (typeof v === 'string') localStorage.setItem(k, v);
-        else localStorage.setItem(k, JSON.stringify(v));
-      });
-      showToast(`✅ ${keys.length}개 항목 복원됨 — 1초 후 새로고침`);
+      if (mode === 'merge') {
+        mergeImportedData(data);
+      } else {
+        keys.forEach(k => {
+          const v = data[k];
+          if (typeof v === 'string') localStorage.setItem(k, v);
+          else localStorage.setItem(k, JSON.stringify(v));
+        });
+      }
+      showToast(`✅ ${mode === 'merge' ? '병합' : '복원'} 완료 — 1초 후 새로고침`);
       setTimeout(() => location.reload(), 1000);
     } catch (err) {
       showError(`백업 파일을 읽을 수 없습니다.\n${err.message}`, err.stack);
@@ -2938,6 +2951,101 @@ function importData(file) {
   };
   reader.onerror = () => showError('파일 읽기 실패');
   reader.readAsText(file);
+}
+
+function parseMaybeJSON(s) {
+  if (typeof s !== 'string') return s;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function mergeImportedData(newData) {
+  // 영상 저장 (videoId 기준 중복 제거, savedAt 더 최근 우선)
+  mergeArrayById('ytkw:savedVideos', newData['ytkw:savedVideos'], 'videoId', 'savedAt');
+  // 채널 저장 (channelId 기준)
+  mergeArrayById('ytkw:savedChannels', newData['ytkw:savedChannels'], 'channelId', 'savedAt');
+  // 차단 영상 (ID 배열, 합집합)
+  mergeIdArray('ytkw:blockedVideos', newData['ytkw:blockedVideos']);
+  // 차단 채널 (객체, 키 기준 merge)
+  mergeObject('ytkw:blockedChannels', newData['ytkw:blockedChannels']);
+  // 검색 기록 (q+mode 기준, count 합산, at 최신)
+  mergeHistory(newData['ytkw:history']);
+  // 요약 캐시 (있으면 합치기 — 충돌 시 새 파일 우선)
+  Object.keys(newData).forEach(k => {
+    if (k.startsWith('ytkw:summary:') && !localStorage.getItem(k)) {
+      localStorage.setItem(k, newData[k]);
+    }
+    if (k.startsWith('ytkw:aspect:') && !localStorage.getItem(k)) {
+      localStorage.setItem(k, newData[k]);
+    }
+  });
+  // 설정값 — 기존이 없을 때만 새 값 사용 (현재 사용자 설정 존중)
+  ['ytkw:apiKey','ytkw:geminiKey','ytkw:theme','ytkw:viewMode','ytkw:region','ytkw:mode','ytkw:features'].forEach(k => {
+    if (!localStorage.getItem(k) && newData[k]) {
+      localStorage.setItem(k, newData[k]);
+    }
+  });
+}
+
+function mergeArrayById(lsKey, newRaw, idField, dateField) {
+  const newArr = parseMaybeJSON(newRaw);
+  if (!Array.isArray(newArr)) return;
+  const existingArr = parseMaybeJSON(localStorage.getItem(lsKey) || '[]') || [];
+  const map = new Map();
+  // 기존 먼저
+  existingArr.forEach(it => { if (it && it[idField]) map.set(it[idField], it); });
+  // 새로 추가 / 비교
+  newArr.forEach(it => {
+    if (!it || !it[idField]) return;
+    if (!map.has(it[idField])) {
+      map.set(it[idField], it);
+    } else if (dateField && (it[dateField] || 0) > (map.get(it[idField])[dateField] || 0)) {
+      map.set(it[idField], it);
+    }
+  });
+  // 최신순 정렬 (dateField 기준)
+  const merged = [...map.values()].sort((a, b) =>
+    (b[dateField] || 0) - (a[dateField] || 0));
+  localStorage.setItem(lsKey, JSON.stringify(merged));
+}
+
+function mergeIdArray(lsKey, newRaw) {
+  const newArr = parseMaybeJSON(newRaw);
+  if (!Array.isArray(newArr)) return;
+  const existingArr = parseMaybeJSON(localStorage.getItem(lsKey) || '[]') || [];
+  const set = new Set([...existingArr, ...newArr].filter(Boolean));
+  localStorage.setItem(lsKey, JSON.stringify([...set]));
+}
+
+function mergeObject(lsKey, newRaw) {
+  const newObj = parseMaybeJSON(newRaw);
+  if (!newObj || typeof newObj !== 'object' || Array.isArray(newObj)) return;
+  const existing = parseMaybeJSON(localStorage.getItem(lsKey) || '{}') || {};
+  const merged = { ...existing, ...newObj };
+  localStorage.setItem(lsKey, JSON.stringify(merged));
+}
+
+function mergeHistory(newRaw) {
+  const newArr = parseMaybeJSON(newRaw);
+  if (!Array.isArray(newArr)) return;
+  const existing = parseMaybeJSON(localStorage.getItem('ytkw:history') || '[]') || [];
+  const map = new Map();
+  const normalize = (item) => typeof item === 'string'
+    ? { q: item, at: 0, count: 1, mode: 'video' }
+    : { mode: 'video', count: 1, at: 0, ...item };
+  [...existing, ...newArr].forEach(raw => {
+    const item = normalize(raw);
+    if (!item.q) return;
+    const key = item.q + '|' + (item.mode || 'video');
+    if (map.has(key)) {
+      const prev = map.get(key);
+      prev.count = (prev.count || 1) + (item.count || 1);
+      prev.at = Math.max(prev.at || 0, item.at || 0);
+    } else {
+      map.set(key, item);
+    }
+  });
+  const merged = [...map.values()].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 200);
+  localStorage.setItem('ytkw:history', JSON.stringify(merged));
 }
 
 function showError(message, details) {
