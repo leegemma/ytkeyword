@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=17" />
+  <link rel="stylesheet" href="style.css?v=18" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -347,6 +347,18 @@
         <p class="hint-small">
           발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> → "Create API key"
         </p>
+
+        <h3 class="key-section-title" style="margin-top:24px">💾 데이터 백업 / 복원</h3>
+        <p class="hint">
+          검색 기록 · 저장한 영상/채널 · 차단 목록 · 설정을 JSON 파일로 백업합니다.
+          브라우저 기록을 지우거나 다른 기기에서 쓸 때 복원하세요.
+          <strong>캐시(요약/종횡비)는 제외</strong>되어 파일이 가볍습니다.
+        </p>
+        <div class="backup-actions">
+          <button class="ghost-btn" id="exportDataBtn" type="button">⬇️ 백업 다운로드</button>
+          <button class="ghost-btn" id="importDataBtn" type="button">⬆️ 백업 불러오기</button>
+          <input type="file" id="importDataInput" accept=".json,application/json" hidden />
+        </div>
       </div>
       <footer class="modal-foot">
         <button class="link-btn" id="apiKeyClearBtn">키 모두 삭제</button>
@@ -739,6 +751,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=17"></script>
+  <script src="script.js?v=18"></script>
 </body>
 </html>

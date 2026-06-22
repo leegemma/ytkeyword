@@ -1704,6 +1704,18 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   margin: 0 0 8px;
 }
 
+.backup-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.backup-actions .ghost-btn {
+  flex: 1;
+  min-width: 140px;
+  justify-content: center;
+}
+
 /* ────────────── Key metrics pills (VidIQ 스타일) ────────────── */
 .key-metrics-row {
   display: grid;

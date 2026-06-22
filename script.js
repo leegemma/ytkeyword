@@ -315,6 +315,15 @@ function bindEvents() {
   savedListModal.querySelectorAll('.detail-tab[data-savedtab]').forEach(b => {
     b.addEventListener('click', () => switchSavedTab(b.dataset.savedtab));
   });
+  // 데이터 백업 / 복원
+  $('exportDataBtn').addEventListener('click', exportData);
+  $('importDataBtn').addEventListener('click', () => $('importDataInput').click());
+  $('importDataInput').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) importData(f);
+    e.target.value = ''; // 같은 파일 다시 선택 가능하게
+  });
+
   // 디테일 모달 저장 토글들
   const vt = $('videoSaveToggle');
   if (vt) vt.addEventListener('click', () => {
@@ -2858,6 +2867,79 @@ function decodeHtml(s) {
   _decodeEl.innerHTML = String(s);
   return _decodeEl.value;
 }
+/* ───────── 데이터 백업/복원 ───────── */
+function exportData() {
+  const data = {};
+  let count = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith('ytkw:')) continue;
+    // 캐시는 제외 (재생성 가능, 용량 큼)
+    if (k.startsWith('ytkw:summary:')) continue;
+    if (k.startsWith('ytkw:aspect:')) continue;
+    data[k] = localStorage.getItem(k);
+    count++;
+  }
+  const payload = {
+    _meta: {
+      app: 'ytkeyword',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      itemCount: count,
+    },
+    data,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ytkeyword-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  showToast(`💾 ${count}개 항목 백업됨`);
+}
+
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      // 두 가지 형식 지원: { _meta, data: {...} } 또는 { ytkw:* 키: ... } 직접
+      const data = (parsed && typeof parsed.data === 'object') ? parsed.data : parsed;
+      if (typeof data !== 'object' || Array.isArray(data) || !data) {
+        showError('잘못된 백업 파일 형식입니다.');
+        return;
+      }
+      const keys = Object.keys(data).filter(k => k.startsWith('ytkw:'));
+      if (!keys.length) {
+        showError('파일에서 ytkw 데이터를 찾을 수 없습니다.');
+        return;
+      }
+      const meta = parsed._meta || {};
+      const when = meta.exportedAt ? new Date(meta.exportedAt).toLocaleString('ko-KR') : '시점 미상';
+      if (!confirm(
+        `백업 파일 정보:\n` +
+        `· 항목 수: ${keys.length}개\n` +
+        `· 백업 시점: ${when}\n\n` +
+        `현재 데이터를 덮어씁니다. 계속할까요?`
+      )) return;
+
+      keys.forEach(k => {
+        const v = data[k];
+        if (typeof v === 'string') localStorage.setItem(k, v);
+        else localStorage.setItem(k, JSON.stringify(v));
+      });
+      showToast(`✅ ${keys.length}개 항목 복원됨 — 1초 후 새로고침`);
+      setTimeout(() => location.reload(), 1000);
+    } catch (err) {
+      showError(`백업 파일을 읽을 수 없습니다.\n${err.message}`, err.stack);
+    }
+  };
+  reader.onerror = () => showError('파일 읽기 실패');
+  reader.readAsText(file);
+}
+
 function showError(message, details) {
   $('errorMessage').textContent = message || '알 수 없는 오류';
   if (details) {
