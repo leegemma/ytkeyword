@@ -2072,6 +2072,36 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   display: block;
 }
 
+/* 채널 타임라인 섹션 */
+.channel-timeline-section {
+  margin-top: 20px;
+  padding: 18px;
+  background: var(--bg-alt);
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+}
+.timeline-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--gray-500);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend-dot.legend-video { background: #ef4444; }
+.legend-dot.legend-shorts { background: #a855f7; }
+
 /* Mini card save 버튼 */
 .mini-save-btn {
   position: absolute;

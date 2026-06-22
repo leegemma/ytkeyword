@@ -361,6 +361,22 @@ function bindEvents() {
     });
   });
 
+  // 채널 타임라인 range 탭
+  const ttabs = $('timelineRangeTabs');
+  if (ttabs) ttabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.growth-tab');
+    if (!tab) return;
+    document.querySelectorAll('#timelineRangeTabs .growth-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const range = tab.dataset.range === 'all' ? 'all' : Number(tab.dataset.range);
+    if (currentChannelDetail) {
+      currentChannelDetail.timelineRange = range;
+      if (currentChannelDetail.timelineVideos) {
+        drawChannelTimeline(currentChannelDetail.timelineVideos, range);
+      }
+    }
+  });
+
   // 그래프 탭
   const gtabs = $('growthTabs');
   if (gtabs) gtabs.addEventListener('click', (e) => {
@@ -2142,8 +2158,9 @@ function tierWithValue(val, tier, suffix) {
 
 /* ───────── 채널 디테일 모달 ───────── */
 async function openChannelDetail(channel) {
-  currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null };
+  currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null, timelineVideos: null, timelineRange: 365 };
   populateChannelInfoTab(channel);
+  loadChannelTimeline();
   // 저장 토글 상태 동기화
   const btn = $('cdSaveToggle');
   if (btn) {
@@ -2243,6 +2260,140 @@ async function getUploadsPlaylistId(channelId, apiKey) {
     key: apiKey,
   });
   return data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads || null;
+}
+
+async function loadChannelTimeline() {
+  if (!currentChannelDetail) return;
+  const grid = $('channelTimelineChart');
+  if (!grid) return;
+  grid.innerHTML = '<p class="loading-text">로딩 중...</p>';
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) { grid.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
+    const playlistId = await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
+    if (!playlistId) { grid.innerHTML = '<p class="empty-text">업로드 정보 없음</p>'; return; }
+    // 최근 50개 가져오기
+    const data = await ytFetch('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId, maxResults: 50, key: apiKey,
+    });
+    const ids = (data.items || []).map(it => it.contentDetails.videoId).filter(Boolean);
+    if (!ids.length) { grid.innerHTML = '<p class="empty-text">영상 없음</p>'; return; }
+    const stats = await fetchInBatches('videos', { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const videos = (data.items || []).map(it => {
+      const id = it.contentDetails.videoId;
+      const s = statsMap[id] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
+      return {
+        videoId: id,
+        title: decodeHtml(it.snippet.title),
+        viewCount: num(s.statistics?.viewCount),
+        publishedAt: it.snippet.publishedAt,
+        isShorts: durationSec > 0 && durationSec <= 180,
+      };
+    });
+    currentChannelDetail.timelineVideos = videos;
+    drawChannelTimeline(videos, currentChannelDetail.timelineRange);
+  } catch (err) {
+    grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function drawChannelTimeline(videos, rangeDays) {
+  const grid = $('channelTimelineChart');
+  if (!grid) return;
+  const now = Date.now();
+  const cutoff = rangeDays === 'all' ? 0 : (now - rangeDays * 86400000);
+  const filtered = videos.filter(v => new Date(v.publishedAt).getTime() >= cutoff);
+  if (!filtered.length) {
+    grid.innerHTML = '<p class="empty-text">선택한 기간에 영상이 없습니다</p>';
+    return;
+  }
+  filtered.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
+
+  const W = 800, H = 320;
+  const pad = { left: 20, right: 65, top: 24, bottom: 60 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+
+  const minDate = cutoff || new Date(filtered[0].publishedAt).getTime();
+  const maxDate = now;
+  const dateRange = Math.max(1, maxDate - minDate);
+  const maxView = Math.max(1, ...filtered.map(v => v.viewCount));
+
+  const points = filtered.map(v => {
+    const ts = new Date(v.publishedAt).getTime();
+    const t = (ts - minDate) / dateRange;
+    const f = v.viewCount / maxView;
+    return {
+      x: pad.left + t * cw,
+      y: pad.top + ch - f * ch,
+      viewCount: v.viewCount,
+      isShorts: v.isShorts,
+      title: v.title,
+      videoId: v.videoId,
+      date: ts,
+    };
+  });
+
+  let path = '';
+  for (let i = 0; i < points.length; i++) {
+    path += (i === 0 ? 'M' : ' L') + points[i].x.toFixed(1) + ',' + points[i].y.toFixed(1);
+  }
+
+  // Y 라벨
+  const yLabels = [0, 0.25, 0.5, 0.75, 1];
+  // X 라벨 (날짜 5개)
+  const xLabelCount = 5;
+  const xLabels = [];
+  for (let i = 0; i < xLabelCount; i++) {
+    const f = i / (xLabelCount - 1);
+    const ts = minDate + dateRange * f;
+    const date = new Date(ts);
+    const y = String(date.getFullYear()).slice(2);
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    xLabels.push({ f, label: `${y}.${m}.${d}` });
+  }
+
+  grid.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ef4444" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${yLabels.map(f => {
+        const y = pad.top + ch * (1 - f);
+        return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${W - pad.right}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.12" stroke-width="1"/>`;
+      }).join('')}
+      <path d="${path} L${points[points.length-1].x.toFixed(1)},${(pad.top + ch).toFixed(1)} L${points[0].x.toFixed(1)},${(pad.top + ch).toFixed(1)} Z" fill="url(#timelineGrad)"/>
+      <path d="${path}" stroke="#ef4444" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      ${points.map(p => `
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${p.isShorts ? '#a855f7' : '#ef4444'}" stroke="var(--bg)" stroke-width="2">
+          <title>${escapeHtml(p.title)}
+조회수 ${fmtCompact(p.viewCount)} · ${new Date(p.date).toISOString().slice(0,10)}</title>
+        </circle>
+      `).join('')}
+      ${yLabels.map(f => {
+        const y = pad.top + ch * (1 - f);
+        return `<text x="${W - pad.right + 6}" y="${(y + 4).toFixed(1)}" font-size="11" fill="currentColor" fill-opacity="0.6" font-family="sans-serif">${fmtCompact(Math.round(maxView * f))}</text>`;
+      }).join('')}
+      ${xLabels.map(item => {
+        const x = pad.left + cw * item.f;
+        return `<text x="${x.toFixed(1)}" y="${pad.top + ch + 18}" font-size="10" fill="currentColor" fill-opacity="0.6" text-anchor="${item.f === 0 ? 'start' : (item.f === 1 ? 'end' : 'middle')}" font-family="sans-serif">${item.label}</text>`;
+      }).join('')}
+      <!-- 업로드 마커 (X축 아래) -->
+      ${points.map(p => `
+        <rect x="${(p.x - 2).toFixed(1)}" y="${(pad.top + ch + 28).toFixed(1)}" width="4" height="10" fill="${p.isShorts ? '#a855f7' : '#ef4444'}" rx="1" opacity="0.7">
+          <title>업로드: ${new Date(p.date).toISOString().slice(0,10)} · ${escapeHtml(p.title)}</title>
+        </rect>
+      `).join('')}
+      <text x="${pad.left}" y="${pad.top + ch + 52}" font-size="10" fill="currentColor" fill-opacity="0.5" font-family="sans-serif">업로드 시점</text>
+    </svg>
+  `;
 }
 
 async function loadChannelLatest() {
