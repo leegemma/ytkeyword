@@ -370,7 +370,7 @@ function bindEvents() {
     tab.classList.add('active');
     if (currentVideoChart) {
       const range = tab.dataset.range === 'all' ? 'all' : Number(tab.dataset.range);
-      drawGrowthChart(currentVideoChart.viewCount, currentVideoChart.ageDays, range);
+      drawGrowthChart(currentVideoChart.viewCount, currentVideoChart.ageDays, range, currentVideoChart.publishedAt);
     }
   });
 
@@ -1790,7 +1790,7 @@ async function detectAspectsForResults(results) {
 /* ───────── 누적 조회수 추정 그래프 ───────── */
 function initGrowthChart(r) {
   const ageDays = Math.max(1, r.days || 1);
-  currentVideoChart = { viewCount: r.viewCount, ageDays };
+  currentVideoChart = { viewCount: r.viewCount, ageDays, publishedAt: r.publishedAt };
   $('growthTotal').textContent = fmtCompact(r.viewCount);
 
   // 영상 게시 기간에 따라 적절한 탭만 활성화
@@ -1815,10 +1815,27 @@ function initGrowthChart(r) {
   if (initialTab) initialTab.classList.add('active');
 
   const range = initial === 'all' ? 'all' : Number(initial);
-  drawGrowthChart(r.viewCount, ageDays, range);
+  drawGrowthChart(r.viewCount, ageDays, range, r.publishedAt);
 }
 
-function drawGrowthChart(viewCount, ageDays, rangeDays) {
+function formatGrowthXLabel(t, range, publishedAt, mode) {
+  // mode: 'date' (실제 캘린더 날짜) / 'days' (N D) / 'hours' (NH)
+  if (mode === 'hours') {
+    return Math.round(t * 24) + 'H';
+  }
+  if (mode === 'days') {
+    return Math.round(t) + 'D';
+  }
+  // date mode
+  if (!publishedAt) return Math.round(t) + 'D';
+  const date = new Date(new Date(publishedAt).getTime() + t * 86400000);
+  const y = String(date.getFullYear()).slice(2);
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}.${m}.${d}`;
+}
+
+function drawGrowthChart(viewCount, ageDays, rangeDays, publishedAt) {
   const svg = $('growthChart');
   if (!svg) return;
   const range = rangeDays === 'all' ? ageDays : Math.min(rangeDays, ageDays);
@@ -1849,7 +1866,15 @@ function drawGrowthChart(viewCount, ageDays, rangeDays) {
   }
 
   const yLabels = [0, 0.25, 0.5, 0.75, 1];
-  const xLabels = [0, 0.5, 1];
+  // X 라벨 모드 결정
+  const xMode = (rangeDays === 'all' && ageDays >= 30) ? 'date'
+              : (range >= 28) ? 'date'
+              : (range >= 1) ? 'days'
+              : 'hours';
+  // X 라벨 개수 (라벨이 너무 빽빽하지 않게)
+  const xCount = xMode === 'date' ? 6 : 5;
+  const xLabels = [];
+  for (let i = 0; i < xCount; i++) xLabels.push(i / (xCount - 1));
 
   svg.innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
@@ -1873,8 +1898,9 @@ function drawGrowthChart(viewCount, ageDays, rangeDays) {
       }).join('')}
       ${xLabels.map(f => {
         const x = pad.left + cw * f;
-        const day = Math.round(range * f);
-        return `<text x="${x.toFixed(1)}" y="${H - 10}" font-size="11" fill="currentColor" fill-opacity="0.6" text-anchor="${f === 0 ? 'start' : (f === 1 ? 'end' : 'middle')}" font-family="sans-serif">${day === 0 ? '0' : day + 'D'}</text>`;
+        const t = range * f;
+        const label = formatGrowthXLabel(t, range, publishedAt, xMode);
+        return `<text x="${x.toFixed(1)}" y="${H - 10}" font-size="10" fill="currentColor" fill-opacity="0.6" text-anchor="${f === 0 ? 'start' : (f === 1 ? 'end' : 'middle')}" font-family="sans-serif">${label}</text>`;
       }).join('')}
     </svg>
   `;

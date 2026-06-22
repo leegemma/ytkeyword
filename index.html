@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=21" />
+  <link rel="stylesheet" href="style.css?v=22" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -454,12 +454,15 @@
 
           <!-- 누적 조회수 추정 그래프 -->
           <section class="growth-section">
+            <h4 class="growth-section-title">
+              📈 영상 조회수 성장 추정
+              <span class="growth-disclaimer-inline">⚠️ 추정값 (실시간 추적 아님)</span>
+            </h4>
             <header class="growth-header">
               <div class="growth-title-row">
                 <span class="growth-total" id="growthTotal">-</span>
-                <select class="growth-mode" disabled><option>Total views (추정)</option></select>
+                <span class="growth-subtitle">현재 누적 조회수</span>
               </div>
-              <span class="growth-disclaimer">⚠️ 추정 곡선 — 실시간 추적 아님</span>
             </header>
             <nav class="growth-tabs" id="growthTabs">
               <button class="growth-tab" data-range="1" type="button">24 hours</button>
@@ -774,6 +777,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=21"></script>
+  <script src="script.js?v=22"></script>
 </body>
 </html>
