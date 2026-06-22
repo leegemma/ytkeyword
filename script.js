@@ -2900,7 +2900,9 @@ function exportData() {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `ytkeyword-backup-${new Date().toISOString().slice(0,10)}.json`;
+  // 파일명 타임스탬프: 2026-06-10_15-30-45 (Windows 파일명 호환 위해 콜론 회피)
+  const stamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+  a.download = `ytkeyword-backup-${stamp}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
