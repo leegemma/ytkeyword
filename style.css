@@ -1829,21 +1829,17 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   align-items: center;
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  background: rgba(0,0,0,0.78);
 }
-.mini-vph-chip.vph-tier-extreme { background: #dcfce7; color: #15803d; }
-.mini-vph-chip.vph-tier-high    { background: #dbeafe; color: #1d4ed8; }
-.mini-vph-chip.vph-tier-mid     { background: #fef3c7; color: #b45309; }
-.mini-vph-chip.vph-tier-low     { background: #f3f4f6; color: #6b7280; }
-.mini-vph-chip.vph-tier-minimal { background: #f3f4f6; color: #9ca3af; }
-[data-theme="dark"] .mini-vph-chip.vph-tier-extreme { background: rgba(34,197,94,.2);  color: #4ade80; }
-[data-theme="dark"] .mini-vph-chip.vph-tier-high    { background: rgba(59,130,246,.2); color: #60a5fa; }
-[data-theme="dark"] .mini-vph-chip.vph-tier-mid     { background: rgba(251,191,36,.2); color: #fbbf24; }
-[data-theme="dark"] .mini-vph-chip.vph-tier-low     { background: rgba(255,255,255,.08); color: #9ca3af; }
-[data-theme="dark"] .mini-vph-chip.vph-tier-minimal { background: rgba(255,255,255,.05); color: #6b7280; }
+.mini-vph-chip.vph-tier-extreme { color: #4ade80; }
+.mini-vph-chip.vph-tier-high    { color: #60a5fa; }
+.mini-vph-chip.vph-tier-mid     { color: #fbbf24; }
+.mini-vph-chip.vph-tier-low     { color: #e5e7eb; }
+.mini-vph-chip.vph-tier-minimal { color: #9ca3af; }
 
 /* VPH chip inside card-thumb: absolute positioned */
 .card-thumb .mini-vph-chip {
