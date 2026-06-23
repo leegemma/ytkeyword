@@ -2387,3 +2387,27 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   margin-top: 12px;
   color: var(--gray-400);
 }
+
+/* ────────────── 헤더 컬럼 툴팁 ────────────── */
+.col-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 280px;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  color: #f3f4f6;
+  font-size: 12.5px;
+  line-height: 1.6;
+  border-radius: 8px;
+  white-space: pre-line;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.32);
+  pointer-events: none;
+}
+[data-theme="light"] .col-tooltip {
+  background: #1f2937;
+  color: #f9fafb;
+}
+th[data-tooltip] {
+  cursor: help;
+  border-bottom: 1px dashed var(--gray-300);
+}

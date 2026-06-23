@@ -264,6 +264,25 @@ function bindEvents() {
   });
   themeToggleBtn.addEventListener('click', toggleTheme);
 
+  // 헤더 컬럼 툴팁
+  const colTooltip = $('colTooltip');
+  document.addEventListener('mouseover', (e) => {
+    const th = e.target.closest('th[data-tooltip]');
+    if (!th) return;
+    const text = th.dataset.tooltip;
+    colTooltip.textContent = text;
+    colTooltip.hidden = false;
+    positionColTooltip(e, colTooltip);
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!e.target.closest('th[data-tooltip]')) return;
+    positionColTooltip(e, colTooltip);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (!e.target.closest('th[data-tooltip]')) return;
+    colTooltip.hidden = true;
+  });
+
   // 사용자가 OS 테마를 바꾸면 (저장된 선택 없을 때만) 자동 반영
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
     if (!localStorage.getItem(LS_KEY_THEME)) {
@@ -1696,6 +1715,17 @@ function updateSavedListButton() {
   } else {
     savedListBtn.hidden = true;
   }
+}
+
+function positionColTooltip(e, el) {
+  const pad = 12;
+  const tw = el.offsetWidth, th2 = el.offsetHeight;
+  let x = e.clientX + pad;
+  let y = e.clientY - th2 - pad;
+  if (x + tw > window.innerWidth - 8) x = e.clientX - tw - pad;
+  if (y < 8) y = e.clientY + pad;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
 }
 
 /* ───────── 테마 ───────── */

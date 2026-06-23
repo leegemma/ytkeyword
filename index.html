@@ -196,11 +196,11 @@
             <th class="th-title">제목</th>
             <th class="th-actions">액션</th>
             <th class="sortable num" data-sort="viewCount">조회수</th>
-            <th class="sortable num" data-sort="vph" title="Views Per Hour (시간당 조회수)">VPH</th>
+            <th class="sortable num" data-sort="vph" data-tooltip="Views Per Hour&#10;게시 후 지금까지의 시간당 평균 조회수&#10;높을수록 현재 빠르게 확산 중">VPH</th>
             <th class="sortable num" data-sort="subscriberCount">구독자</th>
-            <th class="sortable" data-sort="contribution">기여도</th>
-            <th class="sortable" data-sort="performance">성과도</th>
-            <th class="sortable" data-sort="exposure">노출 확률</th>
+            <th class="sortable" data-sort="contribution" data-tooltip="기여도 = 이 영상 조회수 ÷ 채널 평균 조회수&#10;예) 3.0x → 채널 평균보다 3배 많이 시청됨&#10;채널 내에서 이 영상이 얼마나 기여하는지">기여도</th>
+            <th class="sortable" data-sort="performance" data-tooltip="성과도 = 이 영상 조회수 ÷ 채널 구독자 수&#10;예) 0.5x → 구독자의 50% 수준이 시청&#10;구독자 대비 도달률을 측정">성과도</th>
+            <th class="sortable" data-sort="exposure" data-tooltip="노출 확률 = (좋아요 + 댓글) ÷ 조회수 × 100%&#10;시청자 반응률이 높을수록 알고리즘 추천 가능성 증가&#10;1~3%면 평균, 5% 이상이면 높음">노출 확률</th>
             <th class="sortable num" data-sort="channelVideoCount">총 영상 수</th>
             <th class="sortable" data-sort="publishedAt">게시일</th>
           </tr>
@@ -852,6 +852,7 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
+  <div id="colTooltip" class="col-tooltip" hidden></div>
 
   <script src="script.js?v=25"></script>
 </body>
