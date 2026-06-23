@@ -362,6 +362,19 @@ function bindEvents() {
     });
   });
 
+  // 저장 영상 카드 클릭 → 영상 상세 모달
+  savedListModal.addEventListener('click', (e) => {
+    if (e.target.closest('.mini-save-btn, .card-save-btn, [data-saved-channel-remove]')) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+    const card = e.target.closest('.result-card[data-mini-id]');
+    if (!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const videoId = card.dataset.miniId;
+    const saved = savedVideos.find(v => v.videoId === videoId);
+    if (saved) openSavedVideoDetail(saved);
+  });
+
   // 채널 타임라인 range 탭
   const ttabs = $('timelineRangeTabs');
   if (ttabs) ttabs.addEventListener('click', (e) => {
@@ -708,6 +721,85 @@ function openVideoDetail(result) {
   $('popularGrid').innerHTML = '<p class="loading-text">탭을 누르면 로딩됩니다 (API quota 100 units 사용)</p>';
   switchDetailTab('video');
   detailModal.classList.remove('hidden');
+}
+
+async function openSavedVideoDetail(saved) {
+  const days = daysSince(saved.publishedAt);
+  const hours = Math.max(1, (Date.now() - new Date(saved.publishedAt).getTime()) / 3600000);
+  // 저장된 데이터로 즉시 모달 열기 (부분 데이터)
+  const partial = {
+    videoId: saved.videoId,
+    title: saved.title,
+    channelTitle: saved.channelTitle || '',
+    channelId: saved.channelId || '',
+    thumbnail: saved.thumbnail,
+    duration: saved.duration || '',
+    viewCount: saved.viewCount || 0,
+    publishedAt: saved.publishedAt,
+    isShorts: saved.isShorts,
+    days,
+    hours,
+    vph: (saved.viewCount || 0) / hours,
+    likeCount: 0, commentCount: 0,
+    subscriberCount: 0, channelVideoCount: 0, channelViewCount: 0, channelDays: null,
+    channelThumbnail: '', channelDescription: '', channelPublishedAt: '',
+    uploadsPlaylistId: '',
+    tags: [], description: '',
+    performance: null, recentPerformance: null, contribution: null, exposure: null,
+    performanceTier: null, contributionTier: null, exposureTier: null,
+  };
+  openVideoDetail(partial);
+
+  const apiKey = getApiKey();
+  if (!apiKey || !saved.channelId) return;
+  try {
+    const [videoData, channelData] = await Promise.all([
+      ytFetch('videos', { part: 'statistics,contentDetails,snippet', id: saved.videoId, key: apiKey }),
+      ytFetch('channels', { part: 'statistics,snippet,contentDetails', id: saved.channelId, key: apiKey }),
+    ]);
+    const v = videoData.items?.[0];
+    const c = channelData.items?.[0];
+    if (!v || !c) return;
+
+    const subs = num(c.statistics?.subscriberCount);
+    const views = num(v.statistics?.viewCount);
+    const likes = num(v.statistics?.likeCount);
+    const comments = num(v.statistics?.commentCount);
+    const channelViews = num(c.statistics?.viewCount);
+    const channelVideoCount = num(c.statistics?.videoCount);
+    const avgVideoViews = channelVideoCount > 0 ? channelViews / channelVideoCount : null;
+    const performance = subs > 0 ? views / subs : null;
+    const contribution = avgVideoViews > 0 ? views / avgVideoViews : null;
+    const exposure = views > 0 ? (likes + comments) / views * 100 : null;
+    const durationSec = parseDurationSec(v.contentDetails?.duration);
+
+    const full = {
+      ...partial,
+      viewCount: views, likeCount: likes, commentCount: comments,
+      subscriberCount: subs, channelVideoCount, channelViewCount: channelViews,
+      channelDays: c.snippet?.publishedAt ? daysSince(c.snippet.publishedAt) : null,
+      channelThumbnail: c.snippet?.thumbnails?.medium?.url || c.snippet?.thumbnails?.default?.url || '',
+      channelDescription: decodeHtml(c.snippet?.description || ''),
+      channelPublishedAt: c.snippet?.publishedAt || '',
+      uploadsPlaylistId: c.contentDetails?.relatedPlaylists?.uploads || '',
+      tags: (v.snippet?.tags || []).map(decodeHtml),
+      description: decodeHtml(v.snippet?.description || ''),
+      duration: formatDuration(durationSec),
+      vph: views / hours,
+      performance, contribution, exposure,
+      performanceTier: rateTier(performance, [0.3, 1, 3, 10]),
+      contributionTier: rateTier(contribution, [0.3, 1, 3, 10]),
+      exposureTier: rateTier(exposure, [0.5, 1.5, 4, 8]),
+    };
+
+    if (currentDetail?.result?.videoId === saved.videoId) {
+      currentDetail.result = full;
+      populateVideoTab(full);
+      populateChannelTab(full);
+    }
+  } catch (err) {
+    console.warn('저장 영상 상세 로딩 실패:', err);
+  }
 }
 
 function populateVideoTab(r) {
