@@ -1415,7 +1415,7 @@ function renderSavedList() {
       const countryRegion = REGIONS.find(r => r.code === c.country);
       const flag = countryRegion ? countryRegion.flag : '';
       return `
-        <a class="saved-channel-card" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" style="margin-bottom:8px">
+        <a class="saved-channel-card" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" data-saved-channel-detail="${escapeHtml(c.channelId)}" style="margin-bottom:8px" title="클릭하면 채널 상세 (Cmd+클릭은 YouTube)">
           <img class="channel-avatar" src="${c.thumbnail || ''}" alt="" loading="lazy" />
           <div class="saved-channel-info">
             <div class="saved-channel-name">${flag ? flag + ' ' : ''}${escapeHtml(c.name)}</div>
@@ -1425,11 +1425,21 @@ function renderSavedList() {
         </a>
       `;
     }).join('');
+    // 별 클릭 → 저장 해제
     grid.querySelectorAll('[data-saved-channel-remove]').forEach(b => {
       b.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         toggleSaveChannel(b.dataset.savedChannelRemove);
+      });
+    });
+    // 카드 클릭 → 채널 디테일 모달
+    grid.querySelectorAll('[data-saved-channel-detail]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-saved-channel-remove]')) return;
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+        e.preventDefault();
+        openChannelDetailById(el.dataset.savedChannelDetail);
       });
     });
     return;
@@ -2175,6 +2185,68 @@ function tierWithValue(val, tier, suffix) {
 }
 
 /* ───────── 채널 디테일 모달 ───────── */
+async function openChannelDetailById(channelId) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    showError('채널 정보를 가져오려면 YouTube API 키가 필요합니다.\n우상단 🔑 API 키에서 등록하세요.');
+    return;
+  }
+  showToast('채널 정보 로딩 중...');
+  try {
+    const data = await ytFetch('channels', {
+      part: 'snippet,statistics,contentDetails',
+      id: channelId,
+      key: apiKey,
+    });
+    const c = data.items?.[0];
+    if (!c) {
+      showError('채널을 찾을 수 없습니다.\n삭제되었거나 비공개 채널일 수 있습니다.');
+      return;
+    }
+    const subs = num(c.statistics?.subscriberCount);
+    const views = num(c.statistics?.viewCount);
+    const videoCount = num(c.statistics?.videoCount);
+    const publishedAt = c.snippet?.publishedAt || '';
+    const days = publishedAt ? Math.max(1, daysSince(publishedAt)) : 1;
+    const avgViewPerVideo = videoCount > 0 ? views / videoCount : 0;
+    const viewToSubRatio = views > 0 ? (subs / views) * 100 : null;
+    const dailySubGrowth = days > 0 ? subs / days : null;
+    const videoPerformance = subs > 0 ? avgViewPerVideo / subs : null;
+    const growthSpeed = days > 0 ? views / days : null;
+
+    const channel = {
+      channelId: c.id,
+      name: decodeHtml(c.snippet?.title || ''),
+      description: decodeHtml(c.snippet?.description || ''),
+      thumbnail: c.snippet?.thumbnails?.medium?.url
+        || c.snippet?.thumbnails?.default?.url || '',
+      country: c.snippet?.country || '',
+      customUrl: c.snippet?.customUrl || '',
+      uploadsPlaylistId: c.contentDetails?.relatedPlaylists?.uploads || '',
+      latestVideo: null,
+      lastUploadAt: null,
+      publishedAt,
+      days,
+      subscribers: subs,
+      totalViews: views,
+      videoCount,
+      avgViewPerVideo,
+      viewToSubRatio,
+      viewToSubTier: rateTier(viewToSubRatio, [0.5, 1, 3, 6]),
+      dailySubGrowth,
+      dailySubTier: rateTier(dailySubGrowth, [1, 10, 100, 1000]),
+      videoPerformance,
+      videoPerfTier: rateTier(videoPerformance, [0.05, 0.2, 0.5, 1.5]),
+      growthSpeed,
+      growthTier: rateTier(growthSpeed, [100, 1000, 10000, 100000]),
+    };
+    savedListModal.classList.add('hidden'); // 저장 목록 모달 닫기
+    openChannelDetail(channel);
+  } catch (err) {
+    showError(`채널 정보 로딩 실패:\n${err.message}`, err.stack);
+  }
+}
+
 async function openChannelDetail(channel) {
   currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null, timelineVideos: null, timelineRange: 365 };
   populateChannelInfoTab(channel);
