@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=23" />
+  <link rel="stylesheet" href="style.css?v=24" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -743,12 +743,13 @@
               <button class="growth-tab active" data-range="365" type="button">1Y</button>
               <button class="growth-tab" data-range="all" type="button">Max</button>
             </nav>
-            <div id="channelTimelineChart" class="growth-chart" style="height:340px">
+            <div id="channelTimelineChart" class="growth-chart" style="height:340px; cursor:grab; touch-action:none">
               <p class="loading-text">로딩 중... (50개 영상, ~1 unit)</p>
             </div>
             <div class="timeline-legend">
               <span class="legend-item"><span class="legend-dot legend-video"></span>일반 영상</span>
               <span class="legend-item"><span class="legend-dot legend-shorts"></span>Shorts</span>
+              <span class="legend-item legend-hint">🖱 마우스 휠 = 확대/축소 · 더블클릭 = 리셋</span>
             </div>
           </section>
         </div>
@@ -798,6 +799,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="script.js?v=23"></script>
+  <script src="script.js?v=24"></script>
 </body>
 </html>

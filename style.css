@@ -2101,6 +2101,11 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
 }
 .legend-dot.legend-video { background: #ef4444; }
 .legend-dot.legend-shorts { background: #a855f7; }
+.legend-hint {
+  color: var(--gray-400);
+  font-size: 10px;
+  margin-left: auto;
+}
 
 /* Mini card save 버튼 */
 .mini-save-btn {
