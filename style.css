@@ -2239,3 +2239,69 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   .filter-grid { grid-template-columns: 1fr; }
   .search-input-wrap { width: 100%; }
 }
+
+/* ────────────── Quota modal ────────────── */
+.quota-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.quota-used-num {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+.quota-limit-label {
+  font-size: 15px;
+  color: var(--gray-500);
+}
+.quota-bar-wrap {
+  height: 10px;
+  background: var(--gray-100);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.quota-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 20px;
+}
+.quota-meta strong { color: var(--gray-900); }
+.quota-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.quota-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gray-100);
+  font-weight: 600;
+  color: var(--gray-500);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.quota-table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.quota-td-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray-700);
+}
+.quota-empty {
+  text-align: center;
+  color: var(--gray-400);
+  padding: 20px 0 !important;
+}

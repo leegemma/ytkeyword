@@ -15,6 +15,9 @@ const LS_KEY_FEATURES = 'ytkw:features';
 const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
 const LS_KEY_SAVED_CHANNELS = 'ytkw:savedChannels';
 const LS_KEY_ASPECT = 'ytkw:aspect:'; // prefix for video aspect cache
+const LS_KEY_QUOTA = 'ytkw:quotaUsage';
+const ENDPOINT_COSTS = { search: 100, videos: 1, channels: 1, playlistItems: 1 };
+const DAILY_LIMIT = 10000;
 
 const DEFAULT_FEATURES = { summary: false };
 const LS_KEY_REGION = 'ytkw:region';
@@ -57,6 +60,8 @@ const historyChips   = $('historyChips');
 const filterBtn      = $('filterBtn');
 const exportCsvBtn   = $('exportCsvBtn');
 const apiKeyBtn      = $('apiKeyBtn');
+const quotaBtn       = $('quotaBtn');
+const quotaModal     = $('quotaModal');
 const themeToggleBtn = $('themeToggleBtn');
 const apiKeyModal    = $('apiKeyModal');
 const apiKeyInput    = $('apiKeyInput');
@@ -249,6 +254,14 @@ function bindEvents() {
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
+  quotaBtn.addEventListener('click', openQuotaModal);
+  quotaModal.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) quotaModal.classList.add('hidden');
+    if (e.target.id === 'quotaResetBtn') {
+      localStorage.removeItem(LS_KEY_QUOTA);
+      renderQuotaModal();
+    }
+  });
   themeToggleBtn.addEventListener('click', toggleTheme);
 
   // 사용자가 OS 테마를 바꾸면 (저장된 선택 없을 때만) 자동 반영
@@ -1698,6 +1711,62 @@ function toggleTheme() {
 function getApiKey() { return localStorage.getItem(LS_KEY_API) || ''; }
 function getGeminiKey() { return localStorage.getItem(LS_KEY_GEMINI) || ''; }
 
+function openQuotaModal() {
+  renderQuotaModal();
+  quotaModal.classList.remove('hidden');
+}
+
+function renderQuotaModal() {
+  const today = new Date().toLocaleDateString('en-CA');
+  let usage;
+  try { usage = JSON.parse(localStorage.getItem(LS_KEY_QUOTA)); } catch (_) {}
+  if (!usage || usage.date !== today) usage = { date: today, total: 0, breakdown: {} };
+
+  const pct = Math.min(100, (usage.total / DAILY_LIMIT) * 100);
+  const remaining = Math.max(0, DAILY_LIMIT - usage.total);
+  const barColor = pct >= 90 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#22c55e';
+
+  const EP_LABEL = { search: '검색 (search.list)', videos: '영상 정보 (videos.list)', channels: '채널 정보 (channels.list)', playlistItems: '재생목록 (playlistItems.list)' };
+  const rows = Object.entries(usage.breakdown)
+    .sort(([, a], [, b]) => b - a)
+    .map(([ep, units]) => {
+      const calls = Math.round(units / (ENDPOINT_COSTS[ep] || 1));
+      return `<tr><td>${EP_LABEL[ep] || ep}</td><td class="quota-td-num">${calls}회</td><td class="quota-td-num">${units.toLocaleString()}</td></tr>`;
+    }).join('');
+
+  // 다음 리셋: 태평양 자정 기준 (UTC+0 기준 08:00 = PDT 자정)
+  const nowUtc = Date.now();
+  const nextResetUtc = (() => {
+    const d = new Date();
+    d.setUTCHours(8, 0, 0, 0); // PDT 자정 = UTC 07:00 (여름), PST = UTC 08:00
+    if (d.getTime() <= nowUtc) d.setUTCDate(d.getUTCDate() + 1);
+    return d;
+  })();
+  const diffMs = nextResetUtc - nowUtc;
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffM = Math.floor((diffMs % 3600000) / 60000);
+  const resetStr = `${diffH}시간 ${diffM}분 후 초기화`;
+
+  $('quotaModalBody').innerHTML = `
+    <div class="quota-summary">
+      <span class="quota-used-num">${usage.total.toLocaleString()}</span>
+      <span class="quota-limit-label"> / ${DAILY_LIMIT.toLocaleString()} units</span>
+    </div>
+    <div class="quota-bar-wrap">
+      <div class="quota-bar-fill" style="width:${pct.toFixed(1)}%;background:${barColor}"></div>
+    </div>
+    <div class="quota-meta">
+      <span>남은 유닛 <strong>${remaining.toLocaleString()}</strong></span>
+      <span>${resetStr}</span>
+    </div>
+    <table class="quota-table">
+      <thead><tr><th>엔드포인트</th><th>호출</th><th>유닛</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="3" class="quota-empty">오늘 API 호출 없음</td></tr>'}</tbody>
+    </table>
+    <p class="hint-small" style="margin-top:14px">search.list = 100 units · videos/channels/playlistItems = 1 unit · 일일 한도 10,000 units</p>
+  `;
+}
+
 function openApiKeyModal() {
   apiKeyInput.value = getApiKey();
   geminiKeyInput.value = getGeminiKey();
@@ -2951,7 +3020,19 @@ async function ytFetch(endpoint, params) {
     }
     throw new Error(msg);
   }
+  trackQuota(endpoint);
   return data;
+}
+
+function trackQuota(endpoint) {
+  const today = new Date().toLocaleDateString('en-CA');
+  let usage;
+  try { usage = JSON.parse(localStorage.getItem(LS_KEY_QUOTA)); } catch (_) {}
+  if (!usage || usage.date !== today) usage = { date: today, total: 0, breakdown: {} };
+  const cost = ENDPOINT_COSTS[endpoint] || 1;
+  usage.total += cost;
+  usage.breakdown[endpoint] = (usage.breakdown[endpoint] || 0) + cost;
+  localStorage.setItem(LS_KEY_QUOTA, JSON.stringify(usage));
 }
 
 /* ───────── 정렬 ───────── */

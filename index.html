@@ -58,6 +58,10 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         <span id="savedListCount">0</span>
       </button>
+      <button class="ghost-btn" id="quotaBtn" title="API 유닛 사용량">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        유닛
+      </button>
       <button class="ghost-btn" id="featureBtn" title="실험 기능">
         🧪
       </button>
@@ -321,6 +325,22 @@
   </div>
 
   <!-- API key modal -->
+  <!-- Quota usage modal -->
+  <div id="quotaModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel" style="max-width:420px">
+      <header class="modal-head">
+        <h2>API 유닛 사용량</h2>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="modal-body" id="quotaModalBody"></div>
+      <footer class="modal-foot">
+        <button class="link-btn" id="quotaResetBtn">오늘 기록 초기화</button>
+        <button class="primary-btn" data-close>닫기</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="apiKeyModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-backdrop" data-close></div>
     <div class="modal-panel">
