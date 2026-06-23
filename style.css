@@ -989,6 +989,7 @@ body.mode-channel #bulkActions {
 .tier-dot.great { background: var(--green-dark); }
 
 /* ────────────── Detail modal ────────────── */
+#detailModal { z-index: 200; }
 .modal-panel-detail {
   max-width: 920px;
   width: calc(100% - 32px);

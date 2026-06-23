@@ -2876,14 +2876,18 @@ function fmtMultiplier(val) {
 
 function miniCardHtml(it, isPortrait) {
   const isSaved = savedVideoIds.has(it.videoId);
+  const vph = it.vph != null ? it.vph
+    : (it.viewCount && it.publishedAt
+        ? it.viewCount / Math.max(1, (Date.now() - new Date(it.publishedAt).getTime()) / 3600000)
+        : null);
   const perfStr = fmtMultiplier(it.performance);
   const contribStr = fmtMultiplier(it.contribution);
-  const hasStats = it.vph != null || perfStr || contribStr;
+  const hasStats = vph != null || perfStr || contribStr;
   return `
     <div class="result-card${isPortrait ? ' result-card-portrait' : ''}" data-mini-id="${escapeHtml(it.videoId)}">
       <a class="card-thumb" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
-        ${it.vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(it.vph)}">${fmtVPHShort(it.vph)} VPH</span>` : ''}
+        ${vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(vph)}">${fmtVPHShort(vph)} VPH</span>` : ''}
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
       </a>
       <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
