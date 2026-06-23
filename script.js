@@ -101,6 +101,7 @@ const channelDetailModal = $('channelDetailModal');
 
 let currentChannelDetail = null; // { channel, latest, popular: { videos, shorts } }
 let currentTop10SubTab = 'videos';
+let currentLatestSort = 'date_desc';
 
 let currentRegion = localStorage.getItem(LS_KEY_REGION);
 if (currentRegion === null) currentRegion = 'KR'; // 기본
@@ -582,6 +583,18 @@ function bindEvents() {
       filters[id] = v === '' ? null : (id.startsWith('date') ? v : Number(v));
       updateFilterPreviewCount();
     });
+  });
+
+  // 최신 업로드 정렬 버튼
+  channelDetailModal.addEventListener('click', (e) => {
+    const btn = e.target.closest('.latest-sort-btn[data-lsort]');
+    if (!btn) return;
+    currentLatestSort = btn.dataset.lsort;
+    channelDetailModal.querySelectorAll('.latest-sort-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    if (currentChannelDetail?.latest) {
+      renderMiniGrid('cdLatestGrid', sortLatestItems(currentChannelDetail.latest));
+    }
   });
 }
 
@@ -2249,6 +2262,9 @@ async function openChannelDetailById(channelId) {
 
 async function openChannelDetail(channel) {
   currentChannelDetail = { channel, latest: null, popular: { videos: null, shorts: null }, avgLikes: null, timelineVideos: null, timelineRange: 365 };
+  currentLatestSort = 'date_desc';
+  channelDetailModal.querySelectorAll('.latest-sort-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.lsort === 'date_desc'));
   populateChannelInfoTab(channel);
   loadChannelTimeline();
   // 저장 토글 상태 동기화
@@ -2565,28 +2581,63 @@ async function loadChannelLatest() {
     const stats = await fetchInBatches('videos',
       { part: 'statistics,contentDetails' }, ids, apiKey);
     const statsMap = mapBy(stats, 'id');
+    const ch = currentChannelDetail.channel;
+    const chSubs = ch.subscribers || 0;
+    const chAvg = ch.avgViewPerVideo || 0;
     const items = (data.items || []).map(it => {
       const id = it.contentDetails.videoId;
       const s = statsMap[id] || {};
       const durationSec = parseDurationSec(s.contentDetails?.duration);
+      const viewCount = num(s.statistics?.viewCount);
+      const publishedAt = it.snippet.publishedAt;
+      const hours = Math.max(1, (Date.now() - new Date(publishedAt).getTime()) / 3600000);
+      const vph = viewCount / hours;
+      const performance = chSubs > 0 ? viewCount / chSubs : null;
+      const contribution = chAvg > 0 ? viewCount / chAvg : null;
       return {
         videoId: id,
         title: decodeHtml(it.snippet.title),
         thumbnail: it.snippet.thumbnails?.medium?.url
           || it.snippet.thumbnails?.default?.url || '',
-        viewCount: num(s.statistics?.viewCount),
+        viewCount,
         likeCount: num(s.statistics?.likeCount),
         commentCount: num(s.statistics?.commentCount),
-        publishedAt: it.snippet.publishedAt,
+        publishedAt,
         duration: formatDuration(durationSec),
         isShorts: durationSec > 0 && durationSec <= 180,
+        vph,
+        performance,
+        performanceTier: rateTier(performance, [0.3, 1, 3, 10]),
+        contribution,
+        contributionTier: rateTier(contribution, [0.3, 1, 3, 10]),
       };
     });
     currentChannelDetail.latest = items;
-    renderMiniGrid(grid, items);
+    renderMiniGrid(grid, sortLatestItems(items));
   } catch (err) {
     grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
   }
+}
+
+function sortLatestItems(items) {
+  const arr = [...items];
+  switch (currentLatestSort) {
+    case 'date_asc':
+      arr.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
+      break;
+    case 'views_desc':
+      arr.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
+      break;
+    case 'views_asc':
+      arr.sort((a, b) => (a.viewCount || 0) - (b.viewCount || 0));
+      break;
+    case 'vph_desc':
+      arr.sort((a, b) => (b.vph || 0) - (a.vph || 0));
+      break;
+    default: // date_desc
+      arr.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+  }
+  return arr;
 }
 
 async function loadChannelTop() {
@@ -2613,6 +2664,9 @@ async function loadChannelTop() {
       const s = statsMap[v.id.videoId] || {};
       const durationSec = parseDurationSec(s.contentDetails?.duration);
       const views = num(s.statistics?.viewCount);
+      const publishedAt = v.snippet.publishedAt;
+      const hours = Math.max(1, (Date.now() - new Date(publishedAt).getTime()) / 3600000);
+      const vph = views / hours;
       const channelAvg = currentChannelDetail.channel.avgViewPerVideo || 1;
       const contribution = channelAvg > 0 ? views / channelAvg : null;
       const subs = currentChannelDetail.channel.subscribers || 1;
@@ -2623,9 +2677,10 @@ async function loadChannelTop() {
         thumbnail: v.snippet.thumbnails?.medium?.url
           || v.snippet.thumbnails?.default?.url || '',
         viewCount: views,
-        publishedAt: v.snippet.publishedAt,
+        publishedAt,
         duration: formatDuration(durationSec),
         isShorts: durationSec > 0 && durationSec <= 180,
+        vph,
         contribution,
         contributionTier: rateTier(contribution, [0.3, 1, 3, 10]),
         performance,
@@ -2661,6 +2716,7 @@ function renderTopGrid() {
     <div class="top10-item" style="position:relative">
       <a class="top10-thumb" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
+        ${it.vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(it.vph)}" style="position:absolute;bottom:4px;left:4px;font-size:10px">${fmtVPHShort(it.vph)} VPH</span>` : ''}
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
       </a>
       <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}" style="top:6px; right:auto; left:6px">${isSaved ? '★' : '☆'}</button>
@@ -2668,6 +2724,10 @@ function renderTopGrid() {
         <div class="top10-info">
           <h5>${escapeHtml(it.title)}</h5>
           <div class="top10-info-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}</div>
+        </div>
+        <div class="top10-stat">
+          <div class="top10-stat-label">VPH</div>
+          ${it.vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(it.vph)}">${fmtVPHShort(it.vph)}</span>` : '<span style="color:var(--gray-400)">-</span>'}
         </div>
         <div class="top10-stat">
           <div class="top10-stat-label">기여도</div>
@@ -2717,18 +2777,31 @@ function findMiniVideoInfo(videoId) {
   return null;
 }
 
+function fmtMultiplier(val) {
+  if (val == null) return null;
+  return val >= 100 ? '>100x' : (val >= 10 ? Math.round(val) + 'x' : val.toFixed(1) + 'x');
+}
+
 function miniCardHtml(it, isPortrait) {
   const isSaved = savedVideoIds.has(it.videoId);
+  const perfStr = fmtMultiplier(it.performance);
+  const contribStr = fmtMultiplier(it.contribution);
+  const hasStats = it.vph != null || perfStr || contribStr;
   return `
     <div class="result-card${isPortrait ? ' result-card-portrait' : ''}" data-mini-id="${escapeHtml(it.videoId)}">
       <a class="card-thumb" href="https://www.youtube.com/watch?v=${it.videoId}" target="_blank" rel="noopener">
         <img src="${it.thumbnail}" alt="" loading="lazy" />
+        ${it.vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(it.vph)}">${fmtVPHShort(it.vph)} VPH</span>` : ''}
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
       </a>
       <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
       <div class="card-info">
         <h3 class="card-title">${escapeHtml(it.title)}</h3>
         <div class="card-meta">${fmtCompact(it.viewCount)} views · ${fmtDate(it.publishedAt)}${it.likeCount ? ` · 좋아요 ${fmtCompact(it.likeCount)}` : ''}</div>
+        ${hasStats ? `<div class="mini-stats-row">
+          ${perfStr ? `<span class="mini-stat-badge mult-${it.performanceTier || multTier(it.performance)}">성과도 ${perfStr}</span>` : ''}
+          ${contribStr ? `<span class="mini-stat-badge mult-${it.contributionTier || multTier(it.contribution)}">기여도 ${contribStr}</span>` : ''}
+        </div>` : ''}
       </div>
     </div>
   `;
@@ -3304,6 +3377,15 @@ function fmtCompact(n) {
   if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
   return String(n);
 }
+function vphTier(vph) {
+  if (vph == null || isNaN(vph)) return 'minimal';
+  if (vph >= 10000) return 'extreme';
+  if (vph >= 1000) return 'high';
+  if (vph >= 100) return 'mid';
+  if (vph >= 10) return 'low';
+  return 'minimal';
+}
+
 function fmtVPHShort(v) {
   if (v === null || v === undefined || isNaN(v)) return '-';
   if (v < 1) return v.toFixed(1);

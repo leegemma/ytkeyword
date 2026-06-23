@@ -756,7 +756,12 @@
 
         <!-- Tab: 최신 업로드 영상 -->
         <div class="detail-pane hidden" data-cpane="latest">
-          <h4 class="pane-heading">최신 업로드 영상</h4>
+          <div class="latest-sort-bar">
+            <button class="latest-sort-btn active" data-lsort="date_desc">최신순</button>
+            <button class="latest-sort-btn" data-lsort="date_asc">오래된순</button>
+            <button class="latest-sort-btn" data-lsort="views_desc">조회수 많은순</button>
+            <button class="latest-sort-btn" data-lsort="vph_desc">VPH순</button>
+          </div>
           <div id="cdLatestGrid" class="mini-grid">
             <p class="loading-text">탭을 누르면 로딩됩니다 (API quota 약 2 units)</p>
           </div>

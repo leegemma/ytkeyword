@@ -1823,6 +1823,90 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
 }
 
 /* Top 10 sub-tabs (인기 동영상 / 인기 Shorts) */
+/* ── VPH 컬러 chip (mini card 썸네일 + top10 stat) ── */
+.mini-vph-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.mini-vph-chip.vph-tier-extreme { background: #dcfce7; color: #15803d; }
+.mini-vph-chip.vph-tier-high    { background: #dbeafe; color: #1d4ed8; }
+.mini-vph-chip.vph-tier-mid     { background: #fef3c7; color: #b45309; }
+.mini-vph-chip.vph-tier-low     { background: #f3f4f6; color: #6b7280; }
+.mini-vph-chip.vph-tier-minimal { background: #f3f4f6; color: #9ca3af; }
+[data-theme="dark"] .mini-vph-chip.vph-tier-extreme { background: rgba(34,197,94,.2);  color: #4ade80; }
+[data-theme="dark"] .mini-vph-chip.vph-tier-high    { background: rgba(59,130,246,.2); color: #60a5fa; }
+[data-theme="dark"] .mini-vph-chip.vph-tier-mid     { background: rgba(251,191,36,.2); color: #fbbf24; }
+[data-theme="dark"] .mini-vph-chip.vph-tier-low     { background: rgba(255,255,255,.08); color: #9ca3af; }
+[data-theme="dark"] .mini-vph-chip.vph-tier-minimal { background: rgba(255,255,255,.05); color: #6b7280; }
+
+/* VPH chip inside card-thumb: absolute positioned */
+.card-thumb .mini-vph-chip {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+}
+
+/* mini card 성과도/기여도 배지 행 */
+.mini-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mini-stat-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+/* tier 색상은 기존 mult-badge 와 공유 */
+.mini-stat-badge.mult-great  { background: var(--green-soft);  color: var(--green-dark); }
+.mini-stat-badge.mult-good   { background: #eff6ff; color: #2563eb; }
+.mini-stat-badge.mult-normal { background: #fffbeb; color: #b45309; }
+.mini-stat-badge.mult-bad    { background: #fef2f2; color: #dc2626; }
+.mini-stat-badge.mult-worst  { background: var(--gray-100); color: var(--gray-400); }
+[data-theme="dark"] .mini-stat-badge.mult-great  { background: rgba(34,197,94,.15);  color: #4ade80; }
+[data-theme="dark"] .mini-stat-badge.mult-good   { background: rgba(59,130,246,.15); color: #60a5fa; }
+[data-theme="dark"] .mini-stat-badge.mult-normal { background: rgba(251,191,36,.15); color: #fbbf24; }
+[data-theme="dark"] .mini-stat-badge.mult-bad    { background: rgba(239,68,68,.12);  color: #f87171; }
+[data-theme="dark"] .mini-stat-badge.mult-worst  { background: rgba(255,255,255,.06); color: #6b7280; }
+
+.latest-sort-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.latest-sort-btn {
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.latest-sort-btn:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+.latest-sort-btn.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
 .top10-tabs {
   display: flex;
   gap: 4px;
@@ -1855,7 +1939,7 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
 }
 .top10-item {
   display: grid;
-  grid-template-columns: 120px 1fr auto auto auto;
+  grid-template-columns: 120px 1fr auto auto auto auto;
   gap: 12px;
   padding: 8px;
   border: 1px solid var(--gray-200);
