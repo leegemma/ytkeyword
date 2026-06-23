@@ -2305,3 +2305,85 @@ body:not(.feat-summary) [data-feature="summary"] { display: none !important; }
   color: var(--gray-400);
   padding: 20px 0 !important;
 }
+
+/* ────────────── Longs vs Shorts 도넛 차트 ────────────── */
+.ls-chart-section {
+  margin: 24px 0 0;
+  padding: 20px;
+  background: var(--gray-50);
+  border-radius: 12px;
+  border: 1px solid var(--gray-100);
+}
+[data-theme="dark"] .ls-chart-section {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+}
+.ls-chart-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+.ls-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.ls-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ls-bar {
+  display: block;
+  width: 5px;
+  height: 52px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.ls-bar-long  { background: #ff3333; }
+.ls-bar-short { background: #c0c0c0; }
+.ls-legend-label {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 4px;
+}
+.ls-legend-val {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.ls-donut {
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+.ls-donut-bg {
+  fill: none;
+  stroke: var(--gray-200);
+  stroke-width: 14;
+}
+[data-theme="dark"] .ls-donut-bg { stroke: rgba(255,255,255,0.1); }
+.ls-donut-long {
+  fill: none;
+  stroke: #ff3333;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 0 220;
+  transition: stroke-dasharray 0.6s cubic-bezier(0.4,0,0.2,1), stroke-dashoffset 0s;
+}
+.ls-donut-short {
+  fill: none;
+  stroke: #c0c0c0;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 0 220;
+  transition: stroke-dasharray 0.6s cubic-bezier(0.4,0,0.2,1) 0.1s, stroke-dashoffset 0s;
+}
+.ls-hint {
+  margin-top: 12px;
+  color: var(--gray-400);
+}

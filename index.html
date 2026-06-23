@@ -751,6 +751,35 @@
             </div>
           </div>
 
+          <!-- Longs vs Shorts 도넛 차트 -->
+          <section class="ls-chart-section">
+            <h4 class="growth-section-title">Longs vs Shorts Views <span class="growth-disclaimer-inline">최신 업로드 기준 · 추정치</span></h4>
+            <div class="ls-chart-wrap">
+              <div class="ls-legend">
+                <div class="ls-legend-item">
+                  <span class="ls-bar ls-bar-long"></span>
+                  <div>
+                    <div class="ls-legend-label">Long Views</div>
+                    <div class="ls-legend-val" id="cdLongViews">-</div>
+                  </div>
+                </div>
+                <div class="ls-legend-item">
+                  <span class="ls-bar ls-bar-short"></span>
+                  <div>
+                    <div class="ls-legend-label">Short Views</div>
+                    <div class="ls-legend-val" id="cdShortViews">-</div>
+                  </div>
+                </div>
+              </div>
+              <svg class="ls-donut" id="cdLSDonut" viewBox="0 0 100 100">
+                <circle class="ls-donut-bg" r="35" cx="50" cy="50"/>
+                <circle class="ls-donut-long" id="cdDonutLong" r="35" cx="50" cy="50"/>
+                <circle class="ls-donut-short" id="cdDonutShort" r="35" cx="50" cy="50"/>
+              </svg>
+            </div>
+            <p class="hint-small ls-hint" id="cdLSHint">최신업로드 탭을 클릭하면 표시됩니다</p>
+          </section>
+
           <!-- 영상 업로드 & 조회수 타임라인 -->
           <section class="channel-timeline-section">
             <h4 class="growth-section-title">

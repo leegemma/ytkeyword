@@ -2427,6 +2427,15 @@ async function openChannelDetail(channel) {
   channelDetailModal.querySelectorAll('.latest-sort-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.lsort === 'date_desc'));
   populateChannelInfoTab(channel);
+  // 도넛 차트 초기화
+  const lv = $('cdLongViews'); const sv = $('cdShortViews');
+  if (lv) lv.textContent = '-';
+  if (sv) sv.textContent = '-';
+  const dLong = $('cdDonutLong'); const dShort = $('cdDonutShort');
+  if (dLong) { dLong.style.strokeDasharray = '0 220'; }
+  if (dShort) { dShort.style.strokeDasharray = '0 220'; }
+  const hint = $('cdLSHint');
+  if (hint) hint.textContent = '최신업로드 탭을 클릭하면 표시됩니다';
   loadChannelTimeline();
   // 저장 토글 상태 동기화
   const btn = $('cdSaveToggle');
@@ -2775,9 +2784,49 @@ async function loadChannelLatest() {
     });
     currentChannelDetail.latest = items;
     renderMiniGrid(grid, sortLatestItems(items));
+    renderLSChart(items);
   } catch (err) {
     grid.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
   }
+}
+
+function renderLSChart(items) {
+  const longEl = $('cdLongViews');
+  const shortEl = $('cdShortViews');
+  const hintEl = $('cdLSHint');
+  const donutLong = $('cdDonutLong');
+  const donutShort = $('cdDonutShort');
+  if (!longEl || !donutLong) return;
+
+  const longs = items.filter(v => !v.isShorts);
+  const shorts = items.filter(v => v.isShorts);
+  const longViews = longs.reduce((s, v) => s + (v.viewCount || 0), 0);
+  const shortViews = shorts.reduce((s, v) => s + (v.viewCount || 0), 0);
+  const total = longViews + shortViews;
+
+  longEl.textContent = fmtCompact(longViews);
+  shortEl.textContent = fmtCompact(shortViews);
+
+  if (total === 0) {
+    hintEl.textContent = '조회수 데이터 없음';
+    return;
+  }
+
+  hintEl.textContent = `최근 ${items.length}개 영상 기준 (롱 ${longs.length}개 · Shorts ${shorts.length}개)`;
+
+  const C = 2 * Math.PI * 35; // circumference ≈ 219.9
+  const GAP = 3;
+  const longPct = longViews / total;
+  const shortsPct = 1 - longPct;
+  const longDash = Math.max(0, longPct * C - GAP);
+  const shortsDash = Math.max(0, shortsPct * C - GAP);
+  const startOffset = C * 0.25; // rotate to 12 o'clock
+
+  donutLong.style.strokeDasharray = `${longDash} ${C - longDash}`;
+  donutLong.style.strokeDashoffset = startOffset;
+
+  donutShort.style.strokeDasharray = `${shortsDash} ${C - shortsDash}`;
+  donutShort.style.strokeDashoffset = startOffset - longDash - GAP;
 }
 
 function sortLatestItems(items) {
