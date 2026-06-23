@@ -459,12 +459,17 @@ function bindEvents() {
   historyFilter.addEventListener('input', renderHistoryModal);
   $('clearAllHistoryBtn').addEventListener('click', clearAllHistory);
 
-  // 설정 변경 시 자동 재검색
+  // 설정 드롭다운 변경 → 조회 버튼 활성화 (자동 재검색 X)
   [maxResultsEl, videoDurationEl, periodEl].forEach(el => {
-    el.addEventListener('change', triggerSettingsResearch);
+    el.addEventListener('change', markSettingsDirty);
   });
-  // 정렬 기준: 클라이언트 정렬은 재검색 안 함, 서버 정렬은 재검색
   sortOrderEl.addEventListener('change', handleSortOrderChange);
+
+  const settingsSearchBtn = $('settingsSearchBtn');
+  settingsSearchBtn.addEventListener('click', () => {
+    settingsSearchBtn.classList.remove('dirty');
+    triggerSettingsResearch();
+  });
 
   // 모드 탭 (영상 / 채널)
   modeTabs.addEventListener('click', (e) => {
@@ -1839,6 +1844,8 @@ async function onSearch() {
   }
 
   hasSearched = true;
+  $('settingsSearchBtn').hidden = false;
+  clearSettingsDirty();
   progressBar.classList.add('active');
   emptyState.hidden = true;
   tableWrap.hidden = true;
@@ -3563,9 +3570,22 @@ function handleSortOrderChange() {
     sortResults();
     renderResults();
   } else {
-    // YouTube API 정렬 (relevance/date/viewCount): 재검색 필요
-    triggerSettingsResearch();
+    // YouTube API 정렬 (relevance/date/viewCount): 조회 버튼 필요
+    markSettingsDirty();
   }
+}
+
+function markSettingsDirty() {
+  if (!hasSearched) return;
+  const btn = $('settingsSearchBtn');
+  if (!btn) return;
+  btn.hidden = false;
+  btn.classList.add('dirty');
+}
+
+function clearSettingsDirty() {
+  const btn = $('settingsSearchBtn');
+  if (btn) btn.classList.remove('dirty');
 }
 
 function timeAgo(ts) {
