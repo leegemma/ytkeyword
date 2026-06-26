@@ -437,12 +437,44 @@ function bindEvents() {
       const svg = tlChart.querySelector('svg');
       if (!svg) return;
       e.preventDefault();
-      handleTimelineZoom(e, svg);
+      handleTimelineZoom(e, svg, tlChart, currentChannelDetail);
     }, { passive: false });
     tlChart.addEventListener('dblclick', () => {
       if (!currentChannelDetail) return;
       currentChannelDetail.timelineZoom = null;
       drawChannelTimeline(currentChannelDetail.timelineVideos, currentChannelDetail.timelineRange);
+    });
+  }
+
+  // 영상 모달 채널 탭 — 타임라인 range탭 + 휠 줌 + 더블클릭 리셋
+  const dtabs = $('detailTimelineRangeTabs');
+  if (dtabs) dtabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.growth-tab');
+    if (!tab) return;
+    dtabs.querySelectorAll('.growth-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const range = tab.dataset.range === 'all' ? 'all' : Number(tab.dataset.range);
+    if (currentDetail) {
+      currentDetail.timelineRange = range;
+      currentDetail.timelineZoom = null;
+      if (currentDetail.timelineVideos) {
+        drawChannelTimeline(currentDetail.timelineVideos, range, null, $('detailChannelTimelineChart'));
+      }
+    }
+  });
+  const dtlChart = $('detailChannelTimelineChart');
+  if (dtlChart) {
+    dtlChart.addEventListener('wheel', (e) => {
+      if (!currentDetail?.timelineVideos) return;
+      const svg = dtlChart.querySelector('svg');
+      if (!svg) return;
+      e.preventDefault();
+      handleTimelineZoom(e, svg, dtlChart, currentDetail);
+    }, { passive: false });
+    dtlChart.addEventListener('dblclick', () => {
+      if (!currentDetail) return;
+      currentDetail.timelineZoom = null;
+      drawChannelTimeline(currentDetail.timelineVideos, currentDetail.timelineRange, null, dtlChart);
     });
   }
 
@@ -738,7 +770,7 @@ function handleResultClick(e) {
 }
 
 function openVideoDetail(result) {
-  currentDetail = { result, recent: null, popular: null };
+  currentDetail = { result, recent: null, popular: null, timelineVideos: null, timelineRange: 365, timelineZoom: null };
   populateVideoTab(result);
   populateChannelTab(result);
   // 저장 토글 상태 동기화
@@ -902,8 +934,9 @@ function switchDetailTab(tab) {
     t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.detail-pane').forEach(p =>
     p.classList.toggle('hidden', p.dataset.pane !== tab));
-  if (tab === 'channel' && currentDetail && !currentDetail.recent) {
-    loadChannelRecent();
+  if (tab === 'channel' && currentDetail) {
+    if (!currentDetail.recent) loadChannelRecent();
+    if (!currentDetail.timelineVideos) loadDetailChannelTimeline();
   } else if (tab === 'popular' && currentDetail && !currentDetail.popular) {
     loadChannelPopular();
   }
@@ -2632,8 +2665,37 @@ async function loadChannelTimeline() {
   }
 }
 
-function drawChannelTimeline(videos, rangeDays, zoom) {
-  const grid = $('channelTimelineChart');
+async function loadDetailChannelTimeline() {
+  if (!currentDetail) return;
+  const el = $('detailChannelTimelineChart');
+  if (!el) return;
+  el.innerHTML = '<p class="loading-text">로딩 중... (~2 units)</p>';
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) { el.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
+    const playlistId = currentDetail.result.uploadsPlaylistId
+      || await getUploadsPlaylistId(currentDetail.result.channelId, apiKey);
+    if (!playlistId) { el.innerHTML = '<p class="empty-text">업로드 정보 없음</p>'; return; }
+    const data = await ytFetch('playlistItems', { part: 'snippet,contentDetails', playlistId, maxResults: 50, key: apiKey });
+    const ids = (data.items || []).map(it => it.contentDetails.videoId).filter(Boolean);
+    if (!ids.length) { el.innerHTML = '<p class="empty-text">영상 없음</p>'; return; }
+    const stats = await fetchInBatches('videos', { part: 'statistics,contentDetails' }, ids, apiKey);
+    const statsMap = mapBy(stats, 'id');
+    const videos = (data.items || []).map(it => {
+      const id = it.contentDetails.videoId;
+      const s = statsMap[id] || {};
+      const durationSec = parseDurationSec(s.contentDetails?.duration);
+      return { videoId: id, title: decodeHtml(it.snippet.title), viewCount: num(s.statistics?.viewCount), publishedAt: it.snippet.publishedAt, isShorts: durationSec > 0 && durationSec <= 180 };
+    });
+    if (currentDetail) { currentDetail.timelineVideos = videos; }
+    drawChannelTimeline(videos, currentDetail?.timelineRange || 365, null, el);
+  } catch (err) {
+    if (el) el.innerHTML = `<p class="empty-text">오류: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function drawChannelTimeline(videos, rangeDays, zoom, targetEl) {
+  const grid = targetEl || $('channelTimelineChart');
   if (!grid) return;
   const now = Date.now();
   const firstUpload = Math.min(...videos.map(v => new Date(v.publishedAt).getTime()));
@@ -2742,47 +2804,43 @@ function drawChannelTimeline(videos, rangeDays, zoom) {
   `;
 }
 
-function handleTimelineZoom(e, svg) {
-  const videos = currentChannelDetail.timelineVideos;
+function handleTimelineZoom(e, svg, targetEl, ctx) {
+  const state = ctx || currentChannelDetail;
+  if (!state) return;
+  const videos = state.timelineVideos;
   const rect = svg.getBoundingClientRect();
   const W = 800;
   const pad = { left: 20, right: 65 };
   const cw = W - pad.left - pad.right;
-  // 클라이언트 좌표 → viewBox 좌표
   const mouseX = (e.clientX - rect.left) / rect.width * W;
-  // 현재 표시 범위 계산
   const now = Date.now();
   const firstUpload = Math.min(...videos.map(v => new Date(v.publishedAt).getTime()));
-  const z = currentChannelDetail.timelineZoom;
+  const z = state.timelineZoom;
   let start, end;
   if (z) { start = z.start; end = z.end; }
   else {
-    const r = currentChannelDetail.timelineRange;
+    const r = state.timelineRange;
     const rangeStart = r === 'all' ? firstUpload : (now - r * 86400000);
     start = Math.max(rangeStart, firstUpload);
     end = now;
   }
-  // 마우스 위치의 데이터 좌표
   const dataX = start + Math.max(0, (mouseX - pad.left)) / cw * (end - start);
-  // 줌 factor (deltaY < 0 = 휠 위 = 줌 인)
   const factor = e.deltaY < 0 ? 0.8 : 1.25;
   let newStart = dataX - (dataX - start) * factor;
   let newEnd = dataX + (end - dataX) * factor;
-  // 경계 clamp
   const absMin = firstUpload;
   const absMax = now;
-  const minSpan = 86400000; // 최소 1일
-  if (newEnd - newStart < minSpan) return; // 너무 줌인 방지
+  const minSpan = 86400000;
+  if (newEnd - newStart < minSpan) return;
   if (newStart < absMin) { const w = newEnd - newStart; newStart = absMin; newEnd = Math.min(absMax, newStart + w); }
   if (newEnd > absMax) { const w = newEnd - newStart; newEnd = absMax; newStart = Math.max(absMin, newEnd - w); }
   if (newStart >= newEnd) return;
-  // 전체 영역과 같거나 커지면 줌 리셋
   if (newStart <= absMin && newEnd >= absMax) {
-    currentChannelDetail.timelineZoom = null;
+    state.timelineZoom = null;
   } else {
-    currentChannelDetail.timelineZoom = { start: newStart, end: newEnd };
+    state.timelineZoom = { start: newStart, end: newEnd };
   }
-  drawChannelTimeline(videos, currentChannelDetail.timelineRange, currentChannelDetail.timelineZoom);
+  drawChannelTimeline(videos, state.timelineRange, state.timelineZoom, targetEl || $('channelTimelineChart'));
 }
 
 async function loadChannelLatest() {

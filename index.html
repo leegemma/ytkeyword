@@ -568,6 +568,27 @@
             <h4>채널 소개</h4>
             <p id="channelDescription">-</p>
           </div>
+          <!-- 업로드 타임라인 -->
+          <section class="channel-timeline-section">
+            <h4 class="growth-section-title">
+              📊 영상 업로드 & 조회수 타임라인
+              <span class="growth-disclaimer-inline">⚠️ 각 영상 누적 조회수</span>
+            </h4>
+            <nav class="growth-tabs" id="detailTimelineRangeTabs">
+              <button class="growth-tab" data-range="28" type="button">28D</button>
+              <button class="growth-tab" data-range="90" type="button">3M</button>
+              <button class="growth-tab active" data-range="365" type="button">1Y</button>
+              <button class="growth-tab" data-range="all" type="button">Max</button>
+            </nav>
+            <div id="detailChannelTimelineChart" class="growth-chart" style="height:280px; cursor:grab; touch-action:none">
+              <p class="loading-text">채널 탭을 열면 로딩됩니다 (~2 units)</p>
+            </div>
+            <div class="timeline-legend">
+              <span class="legend-item"><span class="legend-dot legend-video"></span>일반 영상</span>
+              <span class="legend-item"><span class="legend-dot legend-shorts"></span>Shorts</span>
+            </div>
+          </section>
+
           <div class="channel-recent">
             <h4>최근 영상</h4>
             <div id="channelRecentGrid" class="mini-grid">
