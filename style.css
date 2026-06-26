@@ -2439,3 +2439,10 @@ th[data-tooltip] {
   cursor: help;
   border-bottom: 1px dashed var(--gray-300);
 }
+
+/* ────────────── Gist 상태 표시 ────────────── */
+.gist-status {
+  margin-top: 6px;
+  word-break: break-all;
+  color: var(--gray-400);
+}

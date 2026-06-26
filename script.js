@@ -16,6 +16,9 @@ const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
 const LS_KEY_SAVED_CHANNELS = 'ytkw:savedChannels';
 const LS_KEY_ASPECT = 'ytkw:aspect:'; // prefix for video aspect cache
 const LS_KEY_QUOTA = 'ytkw:quotaUsage';
+const LS_KEY_GITHUB_PAT = 'ytkw:githubPat';
+const LS_KEY_GIST_ID = 'ytkw:gistId';
+const GIST_FILENAME = 'ytkeyword-backup.json';
 const ENDPOINT_COSTS = { search: 100, videos: 1, channels: 1, playlistItems: 1 };
 const DAILY_LIMIT = 10000;
 
@@ -291,6 +294,8 @@ function bindEvents() {
   });
   apiKeySaveBtn.addEventListener('click', saveApiKey);
   apiKeyClearBtn.addEventListener('click', clearApiKey);
+  $('gistSaveBtn').addEventListener('click', saveToGist);
+  $('gistLoadBtn').addEventListener('click', loadFromGist);
 
   filterBtn.addEventListener('click', openFilterModal);
   filterApplyBtn.addEventListener('click', applyFilters);
@@ -1805,6 +1810,8 @@ function renderQuotaModal() {
 function openApiKeyModal() {
   apiKeyInput.value = getApiKey();
   geminiKeyInput.value = getGeminiKey();
+  $('githubPatInput').value = localStorage.getItem(LS_KEY_GITHUB_PAT) || '';
+  updateGistStatus();
   apiKeyModal.classList.remove('hidden');
   setTimeout(() => apiKeyInput.focus(), 50);
 }
@@ -1812,9 +1819,11 @@ function openApiKeyModal() {
 function saveApiKey() {
   const yt = apiKeyInput.value.trim();
   const gem = geminiKeyInput.value.trim();
+  const pat = $('githubPatInput').value.trim();
   let saved = [];
   if (yt) { localStorage.setItem(LS_KEY_API, yt); saved.push('YouTube'); }
   if (gem) { localStorage.setItem(LS_KEY_GEMINI, gem); saved.push('Gemini'); }
+  if (pat) { localStorage.setItem(LS_KEY_GITHUB_PAT, pat); saved.push('GitHub'); }
   apiKeyModal.classList.add('hidden');
   if (saved.length) showToast(`✅ ${saved.join(' + ')} 키 저장`);
   else showToast('변경 사항 없음');
@@ -1823,9 +1832,19 @@ function saveApiKey() {
 function clearApiKey() {
   localStorage.removeItem(LS_KEY_API);
   localStorage.removeItem(LS_KEY_GEMINI);
+  localStorage.removeItem(LS_KEY_GITHUB_PAT);
+  localStorage.removeItem(LS_KEY_GIST_ID);
   apiKeyInput.value = '';
   geminiKeyInput.value = '';
+  $('githubPatInput').value = '';
   showToast('🗑️ 모든 API 키 삭제됨');
+}
+
+function updateGistStatus() {
+  const gistId = localStorage.getItem(LS_KEY_GIST_ID);
+  const el = $('gistStatus');
+  if (!el) return;
+  el.textContent = gistId ? `연결된 Gist: https://gist.github.com/${gistId}` : '아직 저장된 Gist 없음';
 }
 
 /* ───────── 검색 ───────── */
@@ -3803,6 +3822,100 @@ function importData(file, mode) {
   };
   reader.onerror = () => showError('파일 읽기 실패');
   reader.readAsText(file);
+}
+
+/* ───────── GitHub Gist 동기화 ───────── */
+function buildBackupPayload() {
+  const data = {};
+  let count = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith('ytkw:')) continue;
+    if (k.startsWith('ytkw:summary:') || k.startsWith('ytkw:aspect:')) continue;
+    data[k] = localStorage.getItem(k);
+    count++;
+  }
+  return { _meta: { app: 'ytkeyword', version: 1, exportedAt: new Date().toISOString(), itemCount: count }, data };
+}
+
+async function saveToGist() {
+  const pat = ($('githubPatInput').value.trim()) || localStorage.getItem(LS_KEY_GITHUB_PAT);
+  if (!pat) { showToast('GitHub PAT를 먼저 입력하세요'); return; }
+
+  const btn = $('gistSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+
+  try {
+    const payload = buildBackupPayload();
+    const body = { description: 'ytkeyword 데이터 백업', public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } };
+
+    const gistId = localStorage.getItem(LS_KEY_GIST_ID);
+    const url = gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
+    const method = gistId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const json = await res.json();
+    localStorage.setItem(LS_KEY_GIST_ID, json.id);
+    if (pat) localStorage.setItem(LS_KEY_GITHUB_PAT, pat);
+    updateGistStatus();
+    showToast(`☁️ Gist 저장 완료 (${payload._meta.itemCount}개 항목)`);
+  } catch (err) {
+    showError(`Gist 저장 실패: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '☁️ Gist에 저장';
+  }
+}
+
+async function loadFromGist() {
+  const pat = ($('githubPatInput').value.trim()) || localStorage.getItem(LS_KEY_GITHUB_PAT);
+  const gistId = localStorage.getItem(LS_KEY_GIST_ID);
+  if (!pat) { showToast('GitHub PAT를 먼저 입력하세요'); return; }
+  if (!gistId) { showToast('저장된 Gist가 없습니다. 먼저 저장해주세요'); return; }
+
+  const btn = $('gistLoadBtn');
+  btn.disabled = true;
+  btn.textContent = '불러오는 중...';
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { Authorization: `token ${pat}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const fileContent = json.files?.[GIST_FILENAME]?.content;
+    if (!fileContent) throw new Error('백업 파일을 찾을 수 없습니다');
+
+    const parsed = JSON.parse(fileContent);
+    const data = parsed.data || parsed;
+    const keys = Object.keys(data).filter(k => k.startsWith('ytkw:'));
+    if (!keys.length) throw new Error('유효한 데이터가 없습니다');
+
+    const when = parsed._meta?.exportedAt ? new Date(parsed._meta.exportedAt).toLocaleString('ko-KR') : '시점 미상';
+    if (!confirm(`Gist 백업 정보:\n· 항목 수: ${keys.length}개\n· 백업 시점: ${when}\n\n현재 데이터를 덮어쓸까요?`)) return;
+
+    keys.forEach(k => {
+      const v = data[k];
+      localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+    });
+    showToast('✅ Gist에서 복원 완료 — 새로고침합니다');
+    setTimeout(() => location.reload(), 1000);
+  } catch (err) {
+    showError(`Gist 불러오기 실패: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇️ Gist에서 불러오기';
+  }
 }
 
 function parseMaybeJSON(s) {

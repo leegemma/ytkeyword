@@ -385,6 +385,21 @@
           <strong>덮어쓰기</strong>: 현재 데이터를 백업 파일 내용으로 교체 ·
           <strong>병합</strong>: 백업의 저장/차단/기록을 현재 데이터에 추가 (중복 자동 제거)
         </p>
+
+        <h3 class="key-section-title" style="margin-top:24px">☁️ GitHub Gist 클라우드 동기화</h3>
+        <p class="hint">
+          GitHub 계정으로 데이터를 비공개 Gist에 저장해 다른 기기·브라우저에서 불러올 수 있습니다.
+        </p>
+        <input type="password" id="githubPatInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="text-input-lg" autocomplete="off" />
+        <p class="hint-small">
+          발급: <a href="https://github.com/settings/tokens/new?scopes=gist&description=ytkeyword-sync" target="_blank" rel="noopener">GitHub Settings → Tokens (classic)</a> →
+          <strong>gist</strong> 권한만 체크 → Generate token
+        </p>
+        <div class="backup-actions" style="margin-top:10px">
+          <button class="ghost-btn" id="gistSaveBtn" type="button">☁️ Gist에 저장</button>
+          <button class="ghost-btn" id="gistLoadBtn" type="button">⬇️ Gist에서 불러오기</button>
+        </div>
+        <p class="hint-small gist-status" id="gistStatus"></p>
       </div>
       <footer class="modal-foot">
         <button class="link-btn" id="apiKeyClearBtn">키 모두 삭제</button>
