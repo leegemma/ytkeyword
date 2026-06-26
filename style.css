@@ -2446,3 +2446,29 @@ th[data-tooltip] {
   word-break: break-all;
   color: var(--gray-400);
 }
+
+/* ────────────── 타임라인 수동 로드 버튼 ────────────── */
+.timeline-load-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--bg);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.timeline-load-btn:hover {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+.growth-chart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.growth-chart > svg { width: 100%; }

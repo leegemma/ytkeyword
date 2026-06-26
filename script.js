@@ -771,6 +771,10 @@ function handleResultClick(e) {
 
 function openVideoDetail(result) {
   currentDetail = { result, recent: null, popular: null, timelineVideos: null, timelineRange: 365, timelineZoom: null };
+  const dtlEl = $('detailChannelTimelineChart');
+  if (dtlEl) dtlEl.innerHTML = '<button class="timeline-load-btn" type="button" onclick="loadDetailChannelTimeline()">📊 그래프 불러오기 (~2 units)</button>';
+  const dtabs = $('detailTimelineRangeTabs');
+  if (dtabs) { dtabs.querySelectorAll('.growth-tab').forEach(t => t.classList.toggle('active', t.dataset.range === '365')); }
   populateVideoTab(result);
   populateChannelTab(result);
   // 저장 토글 상태 동기화
@@ -936,7 +940,6 @@ function switchDetailTab(tab) {
     p.classList.toggle('hidden', p.dataset.pane !== tab));
   if (tab === 'channel' && currentDetail) {
     if (!currentDetail.recent) loadChannelRecent();
-    if (!currentDetail.timelineVideos) loadDetailChannelTimeline();
   } else if (tab === 'popular' && currentDetail && !currentDetail.popular) {
     loadChannelPopular();
   }
@@ -2669,7 +2672,11 @@ async function loadDetailChannelTimeline() {
   if (!currentDetail) return;
   const el = $('detailChannelTimelineChart');
   if (!el) return;
-  el.innerHTML = '<p class="loading-text">로딩 중... (~2 units)</p>';
+  if (currentDetail.timelineVideos) {
+    drawChannelTimeline(currentDetail.timelineVideos, currentDetail.timelineRange, null, el);
+    return;
+  }
+  el.innerHTML = '<p class="loading-text">로딩 중...</p>';
   try {
     const apiKey = getApiKey();
     if (!apiKey) { el.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
