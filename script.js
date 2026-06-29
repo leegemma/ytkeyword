@@ -3912,19 +3912,38 @@ async function saveToGist() {
   btn.textContent = '저장 중...';
 
   try {
+    const gistId = localStorage.getItem(LS_KEY_GIST_ID);
+    const headers = { Authorization: `token ${pat}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' };
+
+    // 기존 Gist가 있으면 먼저 내려받아 로컬과 병합
+    if (gistId) {
+      btn.textContent = '병합 중...';
+      try {
+        const getRes = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
+        if (getRes.ok) {
+          const gistJson = await getRes.json();
+          const fileContent = gistJson.files?.[GIST_FILENAME]?.content;
+          if (fileContent) {
+            const parsed = JSON.parse(fileContent);
+            const gistData = parsed.data || parsed;
+            if (typeof gistData === 'object' && !Array.isArray(gistData)) {
+              mergeImportedData(gistData); // Gist 데이터를 로컬에 병합
+            }
+          }
+        }
+      } catch (_) { /* 병합 실패 시 로컬 데이터만으로 저장 진행 */ }
+      btn.textContent = '저장 중...';
+    }
+
+    // 병합된 로컬 데이터로 페이로드 빌드
     const payload = buildBackupPayload();
     const body = { description: 'ytkeyword 데이터 백업', public: false,
       files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } };
 
-    const gistId = localStorage.getItem(LS_KEY_GIST_ID);
     const url = gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
     const method = gistId ? 'PATCH' : 'POST';
 
-    const res = await fetch(url, {
-      method,
-      headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || `HTTP ${res.status}`);
@@ -3933,7 +3952,7 @@ async function saveToGist() {
     localStorage.setItem(LS_KEY_GIST_ID, json.id);
     if (pat) localStorage.setItem(LS_KEY_GITHUB_PAT, pat);
     updateGistStatus();
-    showToast(`☁️ Gist 저장 완료 (${payload._meta.itemCount}개 항목)`);
+    showToast(`☁️ Gist 병합 저장 완료 (${payload._meta.itemCount}개 항목)`);
   } catch (err) {
     showError(`Gist 저장 실패: ${err.message}`);
   } finally {
