@@ -2472,3 +2472,56 @@ th[data-tooltip] {
   justify-content: center;
 }
 .growth-chart > svg { width: 100%; }
+
+/* ───── 키워드 분석 탭 ───── */
+.keyword-section {
+  margin: 16px 20px;
+}
+.kw-search-bar {
+  margin-bottom: 12px;
+}
+.kw-search-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  padding: 0 4px 0 16px;
+  height: 44px;
+  width: 100%;
+  max-width: 480px;
+  transition: border-color 0.15s ease;
+}
+.kw-search-input-wrap:focus-within { border-color: var(--green); }
+.kw-search-input-wrap input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  background: transparent;
+  height: 100%;
+  min-width: 0;
+}
+.kw-disclaimer {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+.kw-empty,
+.kw-loading {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--gray-500);
+  font-size: 14px;
+  background: var(--bg);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+}
+.kw-table-wrap {
+  background: var(--bg);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.kw-table-wrap .results-table td:first-child { font-weight: 600; }

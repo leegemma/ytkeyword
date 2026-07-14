@@ -106,6 +106,16 @@ const modeTabs       = $('modeTabs');
 const channelsWrap   = $('channelsWrap');
 const channelsBody   = $('channelsBody');
 const channelDetailModal = $('channelDetailModal');
+const keywordSection    = $('keywordSection');
+const kwAnalysisInput   = $('kwAnalysisInput');
+const kwAnalysisBtn     = $('kwAnalysisBtn');
+const kwEmpty           = $('kwEmpty');
+const kwLoading         = $('kwLoading');
+const kwResults         = $('kwResults');
+const kwOverallEl       = $('kwOverall');
+const kwVolumeEl        = $('kwVolume');
+const kwCompetitionEl   = $('kwCompetition');
+const kwTableBody       = $('kwTableBody');
 
 let currentChannelDetail = null; // { channel, latest, popular: { videos, shorts } }
 let currentTop10SubTab = 'videos';
@@ -212,6 +222,12 @@ function applySearchMode() {
   } else {
     keywordInput.placeholder = '단어 또는 문장 입력';
   }
+  // 키워드 분석 탭은 기존 영상/채널 검색 UI와 완전히 별개 화면이라
+  // 툴바+메인 결과 영역을 통째로 숨기고 전용 섹션만 보여준다.
+  const isKeywordMode = searchMode === 'keyword';
+  document.querySelector('header.toolbar').hidden = isKeywordMode;
+  document.querySelector('main.results').hidden = isKeywordMode;
+  keywordSection.hidden = !isKeywordMode;
 }
 
 function setSearchMode(mode) {
@@ -219,6 +235,7 @@ function setSearchMode(mode) {
   searchMode = mode;
   localStorage.setItem(LS_KEY_MODE, mode);
   applySearchMode();
+  if (mode === 'keyword') return; // 키워드 탭은 아래 영상/채널 결과 초기화 로직 불필요
   renderHistory(); // 모드별 history 칩 갱신
   // 결과 영역 초기화
   tableWrap.hidden = true;
@@ -255,6 +272,8 @@ function applyViewModeButtonState() {
 function bindEvents() {
   searchBtn.addEventListener('click', onSearch);
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
+  kwAnalysisBtn.addEventListener('click', onKeywordAnalysisSearch);
+  kwAnalysisInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onKeywordAnalysisSearch(); });
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
   quotaBtn.addEventListener('click', openQuotaModal);
@@ -3203,6 +3222,171 @@ function trackQuota(endpoint) {
   usage.total += cost;
   usage.breakdown[endpoint] = (usage.breakdown[endpoint] || 0) + cost;
   localStorage.setItem(LS_KEY_QUOTA, JSON.stringify(usage));
+}
+
+/* ───────── 키워드 분석 탭 ─────────
+ * YouTube Data API는 검색량/경쟁도를 직접 제공하지 않는다.
+ * 대신 해당 키워드로 검색되는 상위 25개 영상의 조회수(→검색량 추정)와
+ * 그 영상들을 올린 채널의 구독자수(→경쟁도 추정)를 로그 스케일로
+ * 정규화해서 0-100 점수/등급을 만든다. VidIQ류 실제 검색 트래픽
+ * 데이터와는 다른, 어디까지나 YouTube API 기반 추정치다.
+ */
+const KW_STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'for', 'with', 'in', 'on', 'at', 'is', 'are',
+  'how', 'what', 'best', 'top', 'you', 'your', 'this', 'that', 'it', 'be', 'by', 'from', 'vs',
+  '이', '그', '저', '것', '수', '등', '및', '를', '을', '은', '는', '이렇게', '어떻게', '하는', '하기', '방법', '추천',
+]);
+
+function tokenizeTitle(title) {
+  return String(title)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1 && !KW_STOPWORDS.has(w));
+}
+
+// 원 키워드 검색 결과 제목들에서 자주 같이 등장하는 단어를 관련 키워드 후보로 추출
+function extractRelatedTerms(titles, keyword, limit) {
+  const kwWords = new Set(tokenizeTitle(keyword));
+  const freq = {};
+  titles.forEach(title => {
+    const seen = new Set();
+    tokenizeTitle(title).forEach(w => {
+      if (kwWords.has(w) || seen.has(w)) return;
+      seen.add(w);
+      freq[w] = (freq[w] || 0) + 1;
+    });
+  });
+  return Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([word, count]) => ({ word, count }));
+}
+
+function kwVolumeScore(avgViews) {
+  if (avgViews <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(Math.log10(avgViews + 1) / Math.log10(200000) * 100)));
+}
+function kwVolumeLabel(avgViews) {
+  const tier = rateTier(avgViews, [750, 5000, 30000, 150000]);
+  const labels = { worst: 'Very low', bad: 'Low', normal: 'Medium', good: 'High', great: 'Very high' };
+  return { tier, label: labels[tier] || '-' };
+}
+
+function kwCompetitionScore(avgSubs) {
+  if (avgSubs <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(Math.log10(avgSubs + 1) / Math.log10(20000000) * 100)));
+}
+function kwCompetitionLabel(avgSubs) {
+  // rateTier의 worst(구독자 적음)=경쟁 낮음(좋음), great(구독자 많음)=경쟁 높음(나쁨) → 톤 반전
+  const rawTier = rateTier(avgSubs, [10000, 100000, 500000, 3000000]);
+  const toneMap = { worst: 'great', bad: 'good', normal: 'normal', good: 'bad', great: 'worst' };
+  const labelMap = { worst: 'Very low', bad: 'Low', normal: 'Medium', good: 'High', great: 'Very high' };
+  return { tier: toneMap[rawTier] || 'normal', label: labelMap[rawTier] || '-' };
+}
+
+function kwScoreBadge(label, tier) {
+  return `<span class="mult-badge mult-inline mult-${tier}">${escapeHtml(label)}</span>`;
+}
+
+async function analyzeKeyword(term, apiKey) {
+  const searchData = await ytFetch('search', {
+    part: 'snippet', q: term, type: 'video', order: 'relevance', maxResults: 25, key: apiKey,
+  });
+  const items = searchData.items || [];
+  const videoIds = items.map(it => it.id?.videoId).filter(Boolean);
+  const channelIds = [...new Set(items.map(it => it.snippet?.channelId).filter(Boolean))];
+
+  const [videoStats, channelStats] = await Promise.all([
+    fetchInBatches('videos', { part: 'statistics' }, videoIds, apiKey),
+    fetchInBatches('channels', { part: 'statistics' }, channelIds, apiKey),
+  ]);
+
+  const avgViews = videoStats.length
+    ? videoStats.reduce((s, v) => s + num(v.statistics?.viewCount), 0) / videoStats.length
+    : 0;
+  const avgSubs = channelStats.length
+    ? channelStats.reduce((s, c) => s + num(c.statistics?.subscriberCount), 0) / channelStats.length
+    : 0;
+
+  const vol = kwVolumeLabel(avgViews);
+  const volScore = kwVolumeScore(avgViews);
+  const comp = kwCompetitionLabel(avgSubs);
+  const compScore = kwCompetitionScore(avgSubs);
+  const overall = Math.round(volScore * 0.5 + (100 - compScore) * 0.5);
+
+  return {
+    keyword: term,
+    titles: items.map(it => it.snippet?.title || ''),
+    avgViews, avgSubs, volScore, volTier: vol.tier, volLabel: vol.label,
+    compScore, compTier: comp.tier, compLabel: comp.label,
+    overall,
+    wordCount: term.trim().split(/\s+/).filter(Boolean).length,
+  };
+}
+
+let kwRunToken = 0; // 새 검색이 시작되면 이전 요청 결과를 버리기 위한 토큰
+
+async function onKeywordAnalysisSearch() {
+  const keyword = kwAnalysisInput.value.trim();
+  if (!keyword) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { showToast('API 키를 먼저 등록하세요 (우상단 🔑)'); return; }
+
+  const runToken = ++kwRunToken;
+  kwEmpty.hidden = true;
+  kwResults.hidden = true;
+  kwLoading.hidden = false;
+
+  try {
+    const primary = await analyzeKeyword(keyword, apiKey);
+    const candidates = extractRelatedTerms(primary.titles, keyword, 5);
+
+    const related = [];
+    for (const { word, count } of candidates) {
+      try {
+        const r = await analyzeKeyword(word, apiKey);
+        r.relatedScore = Math.round((count / primary.titles.length) * 100) / 10;
+        related.push(r);
+      } catch (_) { /* 개별 관련 키워드 실패는 건너뜀 */ }
+    }
+
+    if (runToken !== kwRunToken) return; // 그 사이 새 검색이 시작됐으면 버림
+    renderKeywordResults(primary, related);
+  } catch (err) {
+    if (runToken !== kwRunToken) return;
+    kwLoading.hidden = true;
+    kwEmpty.hidden = false;
+    kwEmpty.textContent = `오류: ${err.message}`;
+  }
+}
+
+function overallTier(score) {
+  return score >= 60 ? 'great' : score >= 35 ? 'normal' : 'worst';
+}
+function overallLabel(score) {
+  return score >= 60 ? 'High' : score >= 35 ? 'Medium' : 'Low';
+}
+
+function renderKeywordResults(primary, related) {
+  kwLoading.hidden = true;
+  kwResults.hidden = false;
+
+  kwOverallEl.innerHTML = `${primary.overall} ${kwScoreBadge(overallLabel(primary.overall), overallTier(primary.overall))}`;
+  kwVolumeEl.innerHTML = `${fmt(Math.round(primary.avgViews))} ${kwScoreBadge(primary.volLabel, primary.volTier)}`;
+  kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
+
+  const rows = [{ ...primary, relatedScore: null }, ...related];
+  kwTableBody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.keyword)}</td>
+      <td class="num">${r.relatedScore === null ? '<span class="dash-text">-</span>' : r.relatedScore}</td>
+      <td class="num">${fmt(Math.round(r.avgViews))}</td>
+      <td class="num">${kwScoreBadge(r.compLabel, r.compTier)}</td>
+      <td class="num">${kwScoreBadge(r.overall, overallTier(r.overall))}</td>
+      <td class="num">${r.wordCount}</td>
+    </tr>
+  `).join('');
 }
 
 /* ───────── 정렬 ───────── */
