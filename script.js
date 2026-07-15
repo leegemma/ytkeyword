@@ -3289,6 +3289,15 @@ function kwScoreBadge(label, tier) {
   return `<span class="mult-badge mult-inline mult-${tier}">${escapeHtml(label)}</span>`;
 }
 
+const KW_TIER_BAR_COLOR = {
+  great: '#22c55e', good: '#3b82f6', normal: '#fbbf24', bad: '#f87171', worst: '#ef4444',
+};
+function kwScoreBar(score, tier) {
+  const color = KW_TIER_BAR_COLOR[tier] || '#9ca3af';
+  const pct = Math.max(0, Math.min(100, score));
+  return `<div class="kw-score-bar"><div class="kw-score-bar-fill" style="width:${pct}%;background:${color}"></div></div>`;
+}
+
 async function analyzeKeyword(term, apiKey) {
   const searchData = await ytFetch('search', {
     part: 'snippet', q: term, type: 'video', order: 'relevance', maxResults: 25, key: apiKey,
@@ -3372,7 +3381,8 @@ function renderKeywordResults(primary, related) {
   kwLoading.hidden = true;
   kwResults.hidden = false;
 
-  kwOverallEl.innerHTML = `${primary.overall} ${kwScoreBadge(overallLabel(primary.overall), overallTier(primary.overall))}`;
+  const oTier = overallTier(primary.overall);
+  kwOverallEl.innerHTML = `${primary.overall} ${kwScoreBadge(overallLabel(primary.overall), oTier)}${kwScoreBar(primary.overall, oTier)}`;
   kwVolumeEl.innerHTML = `${fmt(Math.round(primary.avgViews))} ${kwScoreBadge(primary.volLabel, primary.volTier)}`;
   kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
 
