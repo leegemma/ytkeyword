@@ -237,6 +237,7 @@ function applySearchMode() {
   // 툴바+메인 결과 영역을 통째로 숨기고 전용 섹션만 보여준다.
   const isKeywordMode = searchMode === 'keyword';
   document.querySelector('header.toolbar').hidden = isKeywordMode;
+  document.querySelector('.settings-bar').hidden = isKeywordMode;
   document.querySelector('main.results').hidden = isKeywordMode;
   keywordSection.hidden = !isKeywordMode;
 }
