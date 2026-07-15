@@ -2552,3 +2552,52 @@ th[data-tooltip] {
   border-radius: 999px;
   transition: width 0.3s ease;
 }
+
+.kw-fav-toggle {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--gray-400);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+.kw-fav-toggle:hover { color: #f59e0b; transform: scale(1.1); }
+.kw-fav-toggle.active { color: #f59e0b; }
+
+.kw-fav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.kw-fav-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  white-space: nowrap;
+}
+
+.kw-table-wrap .kw-keyword-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--gray-900);
+  cursor: pointer;
+  text-align: left;
+}
+.kw-table-wrap .kw-keyword-link:hover { color: var(--green-dark); text-decoration: underline; }
+.kw-table-wrap .kw-row-fav {
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  color: var(--gray-400);
+  cursor: pointer;
+  padding: 0 6px 0 0;
+  vertical-align: middle;
+}
+.kw-table-wrap .kw-row-fav:hover { color: #f59e0b; }
+.kw-table-wrap .kw-row-fav.active { color: #f59e0b; }

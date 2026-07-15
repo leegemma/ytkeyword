@@ -14,6 +14,7 @@ const LS_KEY_BLOCKED_CHANNELS = 'ytkw:blockedChannels';
 const LS_KEY_FEATURES = 'ytkw:features';
 const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
 const LS_KEY_SAVED_CHANNELS = 'ytkw:savedChannels';
+const LS_KEY_SAVED_KEYWORDS = 'ytkw:savedKeywords';
 const LS_KEY_ASPECT = 'ytkw:aspect:'; // prefix for video aspect cache
 const LS_KEY_QUOTA = 'ytkw:quotaUsage';
 const LS_KEY_GITHUB_PAT = 'ytkw:githubPat';
@@ -116,6 +117,10 @@ const kwOverallEl       = $('kwOverall');
 const kwVolumeEl        = $('kwVolume');
 const kwCompetitionEl   = $('kwCompetition');
 const kwTableBody       = $('kwTableBody');
+const kwFavBtn          = $('kwFavBtn');
+const kwHistoryChips    = $('kwHistoryChips');
+const kwFavRow          = $('kwFavRow');
+const kwFavChips        = $('kwFavChips');
 
 let currentChannelDetail = null; // { channel, latest, popular: { videos, shorts } }
 let currentTop10SubTab = 'videos';
@@ -207,6 +212,8 @@ function init() {
   applySearchMode();
   updateBlockListButton();
   updateSavedListButton();
+  renderKwFavorites();
+  updateKwFavButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
@@ -235,8 +242,12 @@ function setSearchMode(mode) {
   searchMode = mode;
   localStorage.setItem(LS_KEY_MODE, mode);
   applySearchMode();
-  if (mode === 'keyword') return; // 키워드 탭은 아래 영상/채널 결과 초기화 로직 불필요
   renderHistory(); // 모드별 history 칩 갱신
+  if (mode === 'keyword') {
+    renderKwFavorites();
+    updateKwFavButton();
+    return; // 키워드 탭은 아래 영상/채널 결과 초기화 로직 불필요
+  }
   // 결과 영역 초기화
   tableWrap.hidden = true;
   cardGrid.hidden = true;
@@ -274,6 +285,14 @@ function bindEvents() {
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
   kwAnalysisBtn.addEventListener('click', onKeywordAnalysisSearch);
   kwAnalysisInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onKeywordAnalysisSearch(); });
+  kwAnalysisInput.addEventListener('input', updateKwFavButton);
+  kwFavBtn.addEventListener('click', () => toggleKeywordFavorite(kwAnalysisInput.value.trim()));
+  kwTableBody.addEventListener('click', (e) => {
+    const favBtn = e.target.closest('.kw-row-fav');
+    if (favBtn) { toggleKeywordFavorite(favBtn.dataset.kw); return; }
+    const link = e.target.closest('.kw-keyword-link');
+    if (link) runKeywordAnalysisFor(link.dataset.kw);
+  });
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
   quotaBtn.addEventListener('click', openQuotaModal);
@@ -3336,6 +3355,11 @@ async function analyzeKeyword(term, apiKey) {
 
 let kwRunToken = 0; // 새 검색이 시작되면 이전 요청 결과를 버리기 위한 토큰
 
+async function runKeywordAnalysisFor(keyword) {
+  kwAnalysisInput.value = keyword;
+  await onKeywordAnalysisSearch();
+}
+
 async function onKeywordAnalysisSearch() {
   const keyword = kwAnalysisInput.value.trim();
   if (!keyword) return;
@@ -3361,6 +3385,8 @@ async function onKeywordAnalysisSearch() {
     }
 
     if (runToken !== kwRunToken) return; // 그 사이 새 검색이 시작됐으면 버림
+    pushHistory(keyword);
+    updateKwFavButton();
     renderKeywordResults(primary, related);
   } catch (err) {
     if (runToken !== kwRunToken) return;
@@ -3368,6 +3394,65 @@ async function onKeywordAnalysisSearch() {
     kwEmpty.hidden = false;
     kwEmpty.textContent = `오류: ${err.message}`;
   }
+}
+
+/* ───────── 즐겨찾기 키워드 ───────── */
+function getSavedKeywords() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_SAVED_KEYWORDS) || '[]'); }
+  catch { return []; }
+}
+function isKeywordSaved(kw) {
+  return getSavedKeywords().some(x => x.keyword === kw);
+}
+function toggleKeywordFavorite(kw) {
+  if (!kw) return;
+  let saved = getSavedKeywords();
+  if (saved.some(x => x.keyword === kw)) {
+    saved = saved.filter(x => x.keyword !== kw);
+    showToast('☆ 즐겨찾기 해제됨');
+  } else {
+    saved.unshift({ keyword: kw, at: Date.now() });
+    showToast('⭐ 즐겨찾기 추가됨');
+  }
+  localStorage.setItem(LS_KEY_SAVED_KEYWORDS, JSON.stringify(saved));
+  updateKwFavButton();
+  renderKwFavorites();
+  renderKeywordTableFavStates();
+}
+function updateKwFavButton() {
+  const active = isKeywordSaved(kwAnalysisInput.value.trim());
+  kwFavBtn.classList.toggle('active', active);
+  kwFavBtn.textContent = active ? '★' : '☆';
+}
+function renderKwFavorites() {
+  const saved = getSavedKeywords();
+  kwFavRow.hidden = saved.length === 0;
+  kwFavChips.innerHTML = saved.map(item => `
+    <span class="chip">
+      ${escapeHtml(item.keyword)}
+      <span class="chip-x" data-kw="${escapeHtml(item.keyword)}">×</span>
+    </span>
+  `).join('');
+  kwFavChips.querySelectorAll('.chip-x').forEach(x => {
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleKeywordFavorite(x.dataset.kw);
+    });
+  });
+  kwFavChips.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('chip-x')) return;
+      runKeywordAnalysisFor(chip.querySelector('.chip-x').dataset.kw);
+    });
+  });
+}
+// 결과 테이블이 이미 그려진 상태에서 즐겨찾기만 바뀌었을 때 별 아이콘만 갱신
+function renderKeywordTableFavStates() {
+  kwTableBody.querySelectorAll('.kw-row-fav').forEach(btn => {
+    const active = isKeywordSaved(btn.dataset.kw);
+    btn.classList.toggle('active', active);
+    btn.textContent = active ? '★' : '☆';
+  });
 }
 
 function overallTier(score) {
@@ -3389,7 +3474,10 @@ function renderKeywordResults(primary, related) {
   const rows = [{ ...primary, relatedScore: null }, ...related];
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
-      <td>${escapeHtml(r.keyword)}</td>
+      <td>
+        <button type="button" class="kw-row-fav${isKeywordSaved(r.keyword) ? ' active' : ''}" data-kw="${escapeHtml(r.keyword)}" title="즐겨찾기">${isKeywordSaved(r.keyword) ? '★' : '☆'}</button>
+        <button type="button" class="kw-keyword-link" data-kw="${escapeHtml(r.keyword)}">${escapeHtml(r.keyword)}</button>
+      </td>
       <td class="num">${r.relatedScore === null ? '<span class="dash-text">-</span>' : r.relatedScore}</td>
       <td class="num">${fmt(Math.round(r.avgViews))}</td>
       <td class="num">${kwScoreBadge(r.compLabel, r.compTier)}</td>
@@ -3706,6 +3794,10 @@ function pushHistory(q) {
 }
 
 function renderHistory() {
+  if (searchMode === 'keyword') {
+    renderKwHistory();
+    return;
+  }
   const h = getHistoryForMode();
   const top = h.slice(0, 5);
   historyChips.innerHTML = top.map(item => `
@@ -3735,6 +3827,28 @@ function renderHistory() {
   } else {
     historyBtn.hidden = true;
   }
+}
+
+function renderKwHistory() {
+  const top = getHistoryForMode().slice(0, 5);
+  kwHistoryChips.innerHTML = top.map(item => `
+    <span class="chip">
+      ${escapeHtml(item.q)}
+      <span class="chip-x" data-q="${escapeHtml(item.q)}">×</span>
+    </span>
+  `).join('');
+  kwHistoryChips.querySelectorAll('.chip-x').forEach(x => {
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeHistory(x.dataset.q);
+    });
+  });
+  kwHistoryChips.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('chip-x')) return;
+      runKeywordAnalysisFor(chip.querySelector('.chip-x').dataset.q);
+    });
+  });
 }
 
 function removeHistory(q) {
