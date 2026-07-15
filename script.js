@@ -4162,7 +4162,7 @@ function decodeHtml(s) {
   return _decodeEl.value;
 }
 /* ───────── 데이터 백업/복원 ───────── */
-function exportData() {
+async function exportData() {
   const data = {};
   let count = 0;
   for (let i = 0; i < localStorage.length; i++) {
@@ -4183,12 +4183,29 @@ function exportData() {
     },
     data,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const stamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+  const filename = `ytkeyword-backup-${stamp}.json`;
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+
+  if (window.showSaveFilePicker) {
+    try {
+      const fh = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JSON 백업 파일', accept: { 'application/json': ['.json'] } }],
+      });
+      const writable = await fh.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // 사용자가 취소
+    }
+  }
+  // fallback: 일반 다운로드
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  // 파일명 타임스탬프: 2026-06-10_15-30-45 (Windows 파일명 호환 위해 콜론 회피)
-  const stamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
-  a.download = `ytkeyword-backup-${stamp}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
