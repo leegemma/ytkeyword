@@ -2553,19 +2553,6 @@ th[data-tooltip] {
   transition: width 0.3s ease;
 }
 
-.kw-fav-toggle {
-  background: transparent;
-  border: none;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--gray-400);
-  cursor: pointer;
-  padding: 4px 8px;
-  transition: color 0.12s ease, transform 0.12s ease;
-}
-.kw-fav-toggle:hover { color: #f59e0b; transform: scale(1.1); }
-.kw-fav-toggle.active { color: #f59e0b; }
-
 .kw-fav-row {
   display: flex;
   align-items: center;
@@ -2579,6 +2566,11 @@ th[data-tooltip] {
   white-space: nowrap;
 }
 
+.kw-keyword-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .kw-table-wrap .kw-keyword-link {
   background: none;
   border: none;
@@ -2588,16 +2580,18 @@ th[data-tooltip] {
   color: var(--gray-900);
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .kw-table-wrap .kw-keyword-link:hover { color: var(--green-dark); text-decoration: underline; }
 .kw-table-wrap .kw-row-fav {
+  flex-shrink: 0;
   background: transparent;
   border: none;
   font-size: 15px;
+  line-height: 1;
   color: var(--gray-400);
   cursor: pointer;
-  padding: 0 6px 0 0;
-  vertical-align: middle;
+  padding: 0;
 }
 .kw-table-wrap .kw-row-fav:hover { color: #f59e0b; }
 .kw-table-wrap .kw-row-fav.active { color: #f59e0b; }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=28" />
+  <link rel="stylesheet" href="style.css?v=29" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -218,7 +218,6 @@
     <div class="kw-search-bar">
       <div class="kw-search-input-wrap">
         <input id="kwAnalysisInput" type="text" placeholder="분석할 키워드 입력 (예: 다이어트 레시피)" autocomplete="off" />
-        <button class="kw-fav-toggle" id="kwFavBtn" type="button" title="즐겨찾기 추가/해제" aria-label="즐겨찾기">☆</button>
         <button class="search-btn" id="kwAnalysisBtn" aria-label="분석">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
         </button>
@@ -228,6 +227,7 @@
     <div class="kw-fav-row" id="kwFavRow" hidden>
       <span class="kw-fav-row-label">⭐ 즐겨찾기</span>
       <div class="history-chips" id="kwFavChips"></div>
+      <button class="link-btn" id="kwFavModalBtn" type="button">모두 보기</button>
     </div>
     <p class="kw-disclaimer">* Search volume·Competition은 YouTube Data API로 해당 키워드 상위 노출 영상의 조회수·구독자수를 분석한 <b>추정치</b>입니다. VidIQ/TubeBuddy 등 실제 검색 트래픽 데이터가 아닙니다.</p>
 
@@ -775,6 +775,25 @@
     </div>
   </div>
 
+  <!-- 즐겨찾기 키워드 모달 -->
+  <div id="kwFavModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel">
+      <header class="modal-head">
+        <h2>⭐ 즐겨찾기 키워드 (<span id="kwFavModalCount">0</span>)</h2>
+        <button class="modal-close" data-close aria-label="닫기">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="hint" id="kwFavModalHint">즐겨찾기한 키워드가 없습니다.</p>
+        <div id="kwFavModalList" class="history-list"></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="link-btn" id="clearAllKwFavBtn">전체 삭제</button>
+        <button class="primary-btn" data-close>닫기</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Search history modal -->
   <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-backdrop" data-close></div>
@@ -951,6 +970,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="colTooltip" class="col-tooltip" hidden></div>
 
-  <script src="script.js?v=33"></script>
+  <script src="script.js?v=34"></script>
 </body>
 </html>

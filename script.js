@@ -117,10 +117,15 @@ const kwOverallEl       = $('kwOverall');
 const kwVolumeEl        = $('kwVolume');
 const kwCompetitionEl   = $('kwCompetition');
 const kwTableBody       = $('kwTableBody');
-const kwFavBtn          = $('kwFavBtn');
 const kwHistoryChips    = $('kwHistoryChips');
 const kwFavRow          = $('kwFavRow');
 const kwFavChips        = $('kwFavChips');
+const kwFavModalBtn     = $('kwFavModalBtn');
+const kwFavModal        = $('kwFavModal');
+const kwFavModalCount   = $('kwFavModalCount');
+const kwFavModalHint    = $('kwFavModalHint');
+const kwFavModalList    = $('kwFavModalList');
+const clearAllKwFavBtn  = $('clearAllKwFavBtn');
 
 let currentChannelDetail = null; // { channel, latest, popular: { videos, shorts } }
 let currentTop10SubTab = 'videos';
@@ -213,7 +218,6 @@ function init() {
   updateBlockListButton();
   updateSavedListButton();
   renderKwFavorites();
-  updateKwFavButton();
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
@@ -245,7 +249,6 @@ function setSearchMode(mode) {
   renderHistory(); // 모드별 history 칩 갱신
   if (mode === 'keyword') {
     renderKwFavorites();
-    updateKwFavButton();
     return; // 키워드 탭은 아래 영상/채널 결과 초기화 로직 불필요
   }
   // 결과 영역 초기화
@@ -285,14 +288,14 @@ function bindEvents() {
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
   kwAnalysisBtn.addEventListener('click', onKeywordAnalysisSearch);
   kwAnalysisInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onKeywordAnalysisSearch(); });
-  kwAnalysisInput.addEventListener('input', updateKwFavButton);
-  kwFavBtn.addEventListener('click', () => toggleKeywordFavorite(kwAnalysisInput.value.trim()));
   kwTableBody.addEventListener('click', (e) => {
     const favBtn = e.target.closest('.kw-row-fav');
     if (favBtn) { toggleKeywordFavorite(favBtn.dataset.kw); return; }
     const link = e.target.closest('.kw-keyword-link');
     if (link) runKeywordAnalysisFor(link.dataset.kw);
   });
+  kwFavModalBtn.addEventListener('click', openKwFavModal);
+  clearAllKwFavBtn.addEventListener('click', clearAllKwFav);
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
   quotaBtn.addEventListener('click', openQuotaModal);
@@ -3386,7 +3389,6 @@ async function onKeywordAnalysisSearch() {
 
     if (runToken !== kwRunToken) return; // 그 사이 새 검색이 시작됐으면 버림
     pushHistory(keyword);
-    updateKwFavButton();
     renderKeywordResults(primary, related);
   } catch (err) {
     if (runToken !== kwRunToken) return;
@@ -3415,14 +3417,8 @@ function toggleKeywordFavorite(kw) {
     showToast('⭐ 즐겨찾기 추가됨');
   }
   localStorage.setItem(LS_KEY_SAVED_KEYWORDS, JSON.stringify(saved));
-  updateKwFavButton();
   renderKwFavorites();
   renderKeywordTableFavStates();
-}
-function updateKwFavButton() {
-  const active = isKeywordSaved(kwAnalysisInput.value.trim());
-  kwFavBtn.classList.toggle('active', active);
-  kwFavBtn.textContent = active ? '★' : '☆';
 }
 function renderKwFavorites() {
   const saved = getSavedKeywords();
@@ -3445,6 +3441,7 @@ function renderKwFavorites() {
       runKeywordAnalysisFor(chip.querySelector('.chip-x').dataset.kw);
     });
   });
+  if (!kwFavModal.classList.contains('hidden')) renderKwFavModal();
 }
 // 결과 테이블이 이미 그려진 상태에서 즐겨찾기만 바뀌었을 때 별 아이콘만 갱신
 function renderKeywordTableFavStates() {
@@ -3453,6 +3450,50 @@ function renderKeywordTableFavStates() {
     btn.classList.toggle('active', active);
     btn.textContent = active ? '★' : '☆';
   });
+}
+
+function openKwFavModal() {
+  renderKwFavModal();
+  kwFavModal.classList.remove('hidden');
+}
+
+function renderKwFavModal() {
+  const saved = getSavedKeywords();
+  kwFavModalCount.textContent = saved.length;
+  kwFavModalHint.textContent = saved.length
+    ? '클릭하면 그 키워드로 다시 분석합니다.'
+    : '즐겨찾기한 키워드가 없습니다. 검색 결과 테이블의 ☆ 버튼으로 추가하세요.';
+  kwFavModalList.innerHTML = saved.map(item => `
+    <div class="history-item" data-kw="${escapeHtml(item.keyword)}">
+      <div class="history-item-info">
+        <div class="history-item-q">${escapeHtml(item.keyword)}</div>
+        <div class="history-item-meta">${item.at ? timeAgo(item.at) : ''}</div>
+      </div>
+      <button class="history-item-remove" data-remove="${escapeHtml(item.keyword)}" title="삭제">×</button>
+    </div>
+  `).join('');
+  kwFavModalList.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.history-item-remove')) return;
+      kwFavModal.classList.add('hidden');
+      runKeywordAnalysisFor(el.dataset.kw);
+    });
+  });
+  kwFavModalList.querySelectorAll('.history-item-remove').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleKeywordFavorite(b.dataset.remove);
+    });
+  });
+}
+
+function clearAllKwFav() {
+  if (!confirm('즐겨찾기한 키워드를 모두 삭제하시겠습니까?')) return;
+  localStorage.setItem(LS_KEY_SAVED_KEYWORDS, '[]');
+  renderKwFavorites();
+  renderKeywordTableFavStates();
+  renderKwFavModal();
+  showToast('🗑 즐겨찾기 키워드 삭제됨');
 }
 
 function overallTier(score) {
@@ -3475,8 +3516,10 @@ function renderKeywordResults(primary, related) {
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
       <td>
-        <button type="button" class="kw-row-fav${isKeywordSaved(r.keyword) ? ' active' : ''}" data-kw="${escapeHtml(r.keyword)}" title="즐겨찾기">${isKeywordSaved(r.keyword) ? '★' : '☆'}</button>
-        <button type="button" class="kw-keyword-link" data-kw="${escapeHtml(r.keyword)}">${escapeHtml(r.keyword)}</button>
+        <div class="kw-keyword-cell">
+          <button type="button" class="kw-row-fav${isKeywordSaved(r.keyword) ? ' active' : ''}" data-kw="${escapeHtml(r.keyword)}" title="즐겨찾기">${isKeywordSaved(r.keyword) ? '★' : '☆'}</button>
+          <button type="button" class="kw-keyword-link" data-kw="${escapeHtml(r.keyword)}">${escapeHtml(r.keyword)}</button>
+        </div>
       </td>
       <td class="num">${r.relatedScore === null ? '<span class="dash-text">-</span>' : r.relatedScore}</td>
       <td class="num">${fmt(Math.round(r.avgViews))}</td>
@@ -4320,6 +4363,8 @@ function mergeImportedData(newData) {
   mergeArrayById('ytkw:savedVideos', newData['ytkw:savedVideos'], 'videoId', 'savedAt');
   // 채널 저장 (channelId 기준)
   mergeArrayById('ytkw:savedChannels', newData['ytkw:savedChannels'], 'channelId', 'savedAt');
+  // 즐겨찾기 키워드 (keyword 기준)
+  mergeArrayById('ytkw:savedKeywords', newData['ytkw:savedKeywords'], 'keyword', 'at');
   // 차단 영상 (ID 배열, 합집합)
   mergeIdArray('ytkw:blockedVideos', newData['ytkw:blockedVideos']);
   // 차단 채널 (객체, 키 기준 merge)
