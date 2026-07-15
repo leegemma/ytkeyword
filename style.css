@@ -2538,7 +2538,17 @@ th[data-tooltip] {
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
-.kw-table-wrap .results-table td:first-child { font-weight: 600; }
+.kw-table-wrap .results-table th,
+.kw-table-wrap .results-table td { text-align: center; }
+.kw-table-wrap .results-table th:first-child,
+.kw-table-wrap .results-table td:first-child { text-align: left; font-weight: 600; }
+
+.kw-fav-scores {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 3px 0 2px;
+}
 
 .kw-score-bar {
   margin-top: 8px;

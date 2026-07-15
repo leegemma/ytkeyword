@@ -291,7 +291,7 @@ function bindEvents() {
   kwAnalysisInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onKeywordAnalysisSearch(); });
   kwTableBody.addEventListener('click', (e) => {
     const favBtn = e.target.closest('.kw-row-fav');
-    if (favBtn) { toggleKeywordFavorite(favBtn.dataset.kw); return; }
+    if (favBtn) { toggleKeywordFavorite(favBtn.dataset.kw, favBtn.dataset.scores ? JSON.parse(favBtn.dataset.scores) : null); return; }
     const link = e.target.closest('.kw-keyword-link');
     if (link) runKeywordAnalysisFor(link.dataset.kw);
   });
@@ -3407,14 +3407,14 @@ function getSavedKeywords() {
 function isKeywordSaved(kw) {
   return getSavedKeywords().some(x => x.keyword === kw);
 }
-function toggleKeywordFavorite(kw) {
+function toggleKeywordFavorite(kw, scores) {
   if (!kw) return;
   let saved = getSavedKeywords();
   if (saved.some(x => x.keyword === kw)) {
     saved = saved.filter(x => x.keyword !== kw);
     showToast('☆ 즐겨찾기 해제됨');
   } else {
-    saved.unshift({ keyword: kw, at: Date.now() });
+    saved.unshift({ keyword: kw, at: Date.now(), ...(scores || {}) });
     showToast('⭐ 즐겨찾기 추가됨');
   }
   localStorage.setItem(LS_KEY_SAVED_KEYWORDS, JSON.stringify(saved));
@@ -3464,15 +3464,24 @@ function renderKwFavModal() {
   kwFavModalHint.textContent = saved.length
     ? '클릭하면 그 키워드로 다시 분석합니다.'
     : '즐겨찾기한 키워드가 없습니다. 검색 결과 테이블의 ☆ 버튼으로 추가하세요.';
-  kwFavModalList.innerHTML = saved.map(item => `
+  kwFavModalList.innerHTML = saved.map(item => {
+    const hasScores = item.overall != null;
+    const scoreChips = hasScores ? `
+      <div class="kw-fav-scores">
+        ${kwScoreBadge(item.volLabel, item.volTier)}
+        ${kwScoreBadge(item.compLabel, item.compTier)}
+        ${kwScoreBadge(item.overall, overallTier(item.overall))}
+      </div>` : '';
+    return `
     <div class="history-item" data-kw="${escapeHtml(item.keyword)}">
       <div class="history-item-info">
         <div class="history-item-q">${escapeHtml(item.keyword)}</div>
+        ${scoreChips}
         <div class="history-item-meta">${item.at ? timeAgo(item.at) : ''}</div>
       </div>
       <button class="history-item-remove" data-remove="${escapeHtml(item.keyword)}" title="삭제">×</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   kwFavModalList.querySelectorAll('.history-item').forEach(el => {
     el.addEventListener('click', (e) => {
       if (e.target.closest('.history-item-remove')) return;
@@ -3518,7 +3527,7 @@ function renderKeywordResults(primary, related) {
     <tr>
       <td>
         <div class="kw-keyword-cell">
-          <button type="button" class="kw-row-fav${isKeywordSaved(r.keyword) ? ' active' : ''}" data-kw="${escapeHtml(r.keyword)}" title="즐겨찾기">${isKeywordSaved(r.keyword) ? '★' : '☆'}</button>
+          <button type="button" class="kw-row-fav${isKeywordSaved(r.keyword) ? ' active' : ''}" data-kw="${escapeHtml(r.keyword)}" data-scores="${escapeHtml(JSON.stringify({ volLabel: r.volLabel, volTier: r.volTier, compLabel: r.compLabel, compTier: r.compTier, overall: r.overall, avgViews: r.avgViews }))}" title="즐겨찾기">${isKeywordSaved(r.keyword) ? '★' : '☆'}</button>
           <button type="button" class="kw-keyword-link" data-kw="${escapeHtml(r.keyword)}">${escapeHtml(r.keyword)}</button>
         </div>
       </td>
