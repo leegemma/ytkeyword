@@ -215,6 +215,29 @@
 
   <!-- 키워드 분석 탭 -->
   <section class="keyword-section" id="keywordSection" hidden>
+    <div class="kw-info-bar" id="kwInfoBar">
+      <span class="result-count-chip" id="kwResultCount">0개</span>
+      <button class="ghost-btn" id="kwCsvBtn" title="CSV 내보내기">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV
+      </button>
+      <button class="ghost-btn icon-only" id="kwThemeBtn" title="테마 전환">
+        <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="ghost-btn" id="kwHistoryBtn" title="검색 기록">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="kwHistoryCount">0</span>
+      </button>
+      <button class="ghost-btn" id="kwSavedBtn" title="저장한 영상">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span id="kwSavedCount">0</span>
+      </button>
+      <button class="ghost-btn" id="kwQuotaBtn" title="API 유닛 사용량">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        유닛
+      </button>
+    </div>
     <div class="kw-search-bar">
       <div class="kw-search-input-wrap">
         <input id="kwAnalysisInput" type="text" placeholder="분석할 키워드 입력 (예: 다이어트 레시피)" autocomplete="off" />

@@ -2491,6 +2491,18 @@ th[data-tooltip] {
 .keyword-section {
   margin: 16px 20px;
 }
+.kw-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--gray-200);
+  flex-wrap: wrap;
+}
+.kw-info-bar .result-count-chip {
+  margin-right: 4px;
+}
+
 .kw-search-bar {
   margin-bottom: 12px;
 }

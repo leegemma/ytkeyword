@@ -117,6 +117,9 @@ const kwOverallEl       = $('kwOverall');
 const kwVolumeEl        = $('kwVolume');
 const kwCompetitionEl   = $('kwCompetition');
 const kwTableBody       = $('kwTableBody');
+const kwResultCount     = $('kwResultCount');
+const kwHistoryCount    = $('kwHistoryCount');
+const kwSavedCount      = $('kwSavedCount');
 const kwHistoryChips    = $('kwHistoryChips');
 const kwFavRow          = $('kwFavRow');
 const kwFavChips        = $('kwFavChips');
@@ -240,6 +243,10 @@ function applySearchMode() {
   document.querySelector('.settings-bar').hidden = isKeywordMode;
   document.querySelector('main.results').hidden = isKeywordMode;
   keywordSection.hidden = !isKeywordMode;
+  if (isKeywordMode) {
+    kwHistoryCount.textContent = getHistory().length;
+    kwSavedCount.textContent = savedVideos.length + savedChannels.length;
+  }
 }
 
 function setSearchMode(mode) {
@@ -297,6 +304,11 @@ function bindEvents() {
   });
   kwFavModalBtn.addEventListener('click', openKwFavModal);
   clearAllKwFavBtn.addEventListener('click', clearAllKwFav);
+  $('kwCsvBtn').addEventListener('click', exportKwCsv);
+  $('kwThemeBtn').addEventListener('click', () => themeToggleBtn.click());
+  $('kwHistoryBtn').addEventListener('click', openHistoryModal);
+  $('kwSavedBtn').addEventListener('click', openSavedListModal);
+  $('kwQuotaBtn').addEventListener('click', openQuotaModal);
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
   quotaBtn.addEventListener('click', openQuotaModal);
@@ -3523,6 +3535,7 @@ function renderKeywordResults(primary, related) {
   kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
 
   const rows = [{ ...primary, relatedScore: null }, ...related];
+  kwResultCount.textContent = rows.length + '개';
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
       <td>
@@ -4079,6 +4092,31 @@ function exportCsv() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `ytkeyword-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  showToast('💾 CSV 저장됨');
+}
+
+function exportKwCsv() {
+  const rows = [...kwTableBody.querySelectorAll('tr')];
+  if (!rows.length) { showToast('내보낼 결과가 없습니다'); return; }
+  const headers = ['Keyword', 'Related score', 'Search volume', 'Competition', 'Overall', 'Number of words'];
+  const data = rows.map(tr => {
+    const tds = [...tr.querySelectorAll('td')];
+    return [
+      tds[0]?.querySelector('.kw-keyword-link')?.textContent?.trim() || '',
+      tds[1]?.textContent?.trim() || '',
+      tds[2]?.textContent?.trim() || '',
+      tds[3]?.querySelector('.mult-badge')?.textContent?.trim() || tds[3]?.textContent?.trim() || '',
+      tds[4]?.querySelector('.mult-badge')?.textContent?.trim() || tds[4]?.textContent?.trim() || '',
+      tds[5]?.textContent?.trim() || '',
+    ];
+  });
+  const csv = [headers, ...data].map(r => r.map(csvCell).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `kw-analysis-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   showToast('💾 CSV 저장됨');
