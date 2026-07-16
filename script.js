@@ -3899,7 +3899,7 @@ function renderHistoryModal() {
   const h = getHistoryForMode();
   const filter = (historyFilter.value || '').trim().toLowerCase();
   const filtered = filter ? h.filter(item => item.q.toLowerCase().includes(filter)) : h;
-  const modeLabel = searchMode === 'channel' ? '채널' : '영상';
+  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : '영상';
   $('historyHint').textContent = `${modeLabel} 검색 기록 ${h.length}개 · 모드별 분리 저장 · 클릭하면 다시 검색`;
   const listEl = $('historyList');
   listEl.innerHTML = filtered.map(item => `
@@ -3930,7 +3930,7 @@ function renderHistoryModal() {
 }
 
 function clearAllHistory() {
-  const modeLabel = searchMode === 'channel' ? '채널' : '영상';
+  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : '영상';
   if (!confirm(`${modeLabel} 검색 기록을 모두 삭제하시겠습니까? (다른 모드 기록은 유지됩니다)`)) return;
   // 현재 모드 기록만 삭제, 다른 모드는 유지
   const h = getHistory().filter(x => x.mode !== searchMode);
