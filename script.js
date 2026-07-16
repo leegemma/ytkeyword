@@ -108,8 +108,7 @@ const channelsWrap   = $('channelsWrap');
 const channelsBody   = $('channelsBody');
 const channelDetailModal = $('channelDetailModal');
 const keywordSection    = $('keywordSection');
-const kwAnalysisInput   = $('kwAnalysisInput');
-const kwAnalysisBtn     = $('kwAnalysisBtn');
+
 const kwEmpty           = $('kwEmpty');
 const kwLoading         = $('kwLoading');
 const kwResults         = $('kwResults');
@@ -117,10 +116,7 @@ const kwOverallEl       = $('kwOverall');
 const kwVolumeEl        = $('kwVolume');
 const kwCompetitionEl   = $('kwCompetition');
 const kwTableBody       = $('kwTableBody');
-const kwResultCount     = $('kwResultCount');
-const kwHistoryCount    = $('kwHistoryCount');
-const kwSavedCount      = $('kwSavedCount');
-const kwHistoryChips    = $('kwHistoryChips');
+const kwHistoryChips    = historyChips;
 const kwFavRow          = $('kwFavRow');
 const kwFavChips        = $('kwFavChips');
 const kwFavModalBtn     = $('kwFavModalBtn');
@@ -231,22 +227,18 @@ function applySearchMode() {
   modeTabs.querySelectorAll('.mode-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.mode === searchMode);
   });
+  const isKeywordMode = searchMode === 'keyword';
   if (searchMode === 'channel') {
     keywordInput.placeholder = '채널 관련 키워드 입력';
+  } else if (isKeywordMode) {
+    keywordInput.placeholder = '분석할 키워드 입력 (예: 다이어트 레시피)';
   } else {
     keywordInput.placeholder = '단어 또는 문장 입력';
   }
-  // 키워드 분석 탭은 기존 영상/채널 검색 UI와 완전히 별개 화면이라
-  // 툴바+메인 결과 영역을 통째로 숨기고 전용 섹션만 보여준다.
-  const isKeywordMode = searchMode === 'keyword';
-  document.querySelector('header.toolbar').hidden = isKeywordMode;
+  filterBtn.hidden = isKeywordMode;
   document.querySelector('.settings-bar').hidden = isKeywordMode;
   document.querySelector('main.results').hidden = isKeywordMode;
   keywordSection.hidden = !isKeywordMode;
-  if (isKeywordMode) {
-    kwHistoryCount.textContent = getHistory().length;
-    kwSavedCount.textContent = savedVideos.length + savedChannels.length;
-  }
 }
 
 function setSearchMode(mode) {
@@ -294,8 +286,6 @@ function applyViewModeButtonState() {
 function bindEvents() {
   searchBtn.addEventListener('click', onSearch);
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
-  kwAnalysisBtn.addEventListener('click', onKeywordAnalysisSearch);
-  kwAnalysisInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onKeywordAnalysisSearch(); });
   kwTableBody.addEventListener('click', (e) => {
     const favBtn = e.target.closest('.kw-row-fav');
     if (favBtn) { toggleKeywordFavorite(favBtn.dataset.kw, favBtn.dataset.scores ? JSON.parse(favBtn.dataset.scores) : null); return; }
@@ -304,11 +294,6 @@ function bindEvents() {
   });
   kwFavModalBtn.addEventListener('click', openKwFavModal);
   clearAllKwFavBtn.addEventListener('click', clearAllKwFav);
-  $('kwCsvBtn').addEventListener('click', exportKwCsv);
-  $('kwThemeBtn').addEventListener('click', () => themeToggleBtn.click());
-  $('kwHistoryBtn').addEventListener('click', openHistoryModal);
-  $('kwSavedBtn').addEventListener('click', openSavedListModal);
-  $('kwQuotaBtn').addEventListener('click', openQuotaModal);
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
   quotaBtn.addEventListener('click', openQuotaModal);
@@ -355,7 +340,7 @@ function bindEvents() {
   filterApplyBtn.addEventListener('click', applyFilters);
   filterResetBtn.addEventListener('click', resetFilters);
 
-  exportCsvBtn.addEventListener('click', exportCsv);
+  exportCsvBtn.addEventListener('click', () => searchMode === 'keyword' ? exportKwCsv() : exportCsv());
 
   // 프리셋 칩
   document.querySelectorAll('.preset-chip').forEach(b => {
@@ -1951,6 +1936,9 @@ async function onSearch() {
   if (searchMode === 'channel') {
     return onSearchChannels(q, apiKey);
   }
+  if (searchMode === 'keyword') {
+    return onKeywordAnalysisSearch();
+  }
 
   hasSearched = true;
   $('settingsSearchBtn').hidden = false;
@@ -3372,12 +3360,12 @@ async function analyzeKeyword(term, apiKey) {
 let kwRunToken = 0; // 새 검색이 시작되면 이전 요청 결과를 버리기 위한 토큰
 
 async function runKeywordAnalysisFor(keyword) {
-  kwAnalysisInput.value = keyword;
+  keywordInput.value = keyword;
   await onKeywordAnalysisSearch();
 }
 
 async function onKeywordAnalysisSearch() {
-  const keyword = kwAnalysisInput.value.trim();
+  const keyword = keywordInput.value.trim();
   if (!keyword) return;
   const apiKey = getApiKey();
   if (!apiKey) { showToast('API 키를 먼저 등록하세요 (우상단 🔑)'); return; }
@@ -3535,7 +3523,7 @@ function renderKeywordResults(primary, related) {
   kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
 
   const rows = [{ ...primary, relatedScore: null }, ...related];
-  kwResultCount.textContent = rows.length + '개';
+  resultCount.textContent = rows.length + '개';
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
       <td>
@@ -3860,10 +3848,6 @@ function pushHistory(q) {
 }
 
 function renderHistory() {
-  if (searchMode === 'keyword') {
-    renderKwHistory();
-    return;
-  }
   const h = getHistoryForMode();
   const top = h.slice(0, 5);
   historyChips.innerHTML = top.map(item => `
@@ -3895,27 +3879,6 @@ function renderHistory() {
   }
 }
 
-function renderKwHistory() {
-  const top = getHistoryForMode().slice(0, 5);
-  kwHistoryChips.innerHTML = top.map(item => `
-    <span class="chip">
-      ${escapeHtml(item.q)}
-      <span class="chip-x" data-q="${escapeHtml(item.q)}">×</span>
-    </span>
-  `).join('');
-  kwHistoryChips.querySelectorAll('.chip-x').forEach(x => {
-    x.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeHistory(x.dataset.q);
-    });
-  });
-  kwHistoryChips.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', (e) => {
-      if (e.target.classList.contains('chip-x')) return;
-      runKeywordAnalysisFor(chip.querySelector('.chip-x').dataset.q);
-    });
-  });
-}
 
 function removeHistory(q) {
   // 현재 모드 기록에서만 제거
