@@ -1860,7 +1860,8 @@ function renderQuotaModal() {
   const diffMs = nextResetUtc - nowUtc;
   const diffH = Math.floor(diffMs / 3600000);
   const diffM = Math.floor((diffMs % 3600000) / 60000);
-  const resetStr = `${diffH}시간 ${diffM}분 후 초기화`;
+  const resetTimeStr = nextResetUtc.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const resetStr = `${diffH}시간 ${diffM}분 후 초기화 (${resetTimeStr})`;
 
   $('quotaModalBody').innerHTML = `
     <div class="quota-summary">
@@ -3377,7 +3378,7 @@ async function onKeywordAnalysisSearch() {
 
   try {
     const primary = await analyzeKeyword(keyword, apiKey);
-    const candidates = extractRelatedTerms(primary.titles, keyword, 2);
+    const candidates = extractRelatedTerms(primary.titles, keyword, 1);
 
     const related = [];
     for (const { word, count } of candidates) {
