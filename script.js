@@ -117,9 +117,8 @@ const kwVolumeEl        = $('kwVolume');
 const kwCompetitionEl   = $('kwCompetition');
 const kwTableBody       = $('kwTableBody');
 const kwHistoryChips    = historyChips;
-const kwFavRow          = $('kwFavRow');
-const kwFavChips        = $('kwFavChips');
-const kwFavModalBtn     = $('kwFavModalBtn');
+const kwFavBtn          = $('kwFavBtn');
+const kwFavBtnCount     = $('kwFavBtnCount');
 const kwFavModal        = $('kwFavModal');
 const kwFavModalCount   = $('kwFavModalCount');
 const kwFavModalHint    = $('kwFavModalHint');
@@ -236,6 +235,7 @@ function applySearchMode() {
     keywordInput.placeholder = '단어 또는 문장 입력';
   }
   filterBtn.hidden = isKeywordMode;
+  kwFavBtn.hidden = !isKeywordMode;
   document.querySelector('.settings-bar').hidden = isKeywordMode;
   document.querySelector('main.results').hidden = isKeywordMode;
   keywordSection.hidden = !isKeywordMode;
@@ -292,7 +292,7 @@ function bindEvents() {
     const link = e.target.closest('.kw-keyword-link');
     if (link) runKeywordAnalysisFor(link.dataset.kw);
   });
-  kwFavModalBtn.addEventListener('click', openKwFavModal);
+  kwFavBtn.addEventListener('click', openKwFavModal);
   clearAllKwFavBtn.addEventListener('click', clearAllKwFav);
 
   apiKeyBtn.addEventListener('click', openApiKeyModal);
@@ -3423,25 +3423,7 @@ function toggleKeywordFavorite(kw, scores) {
 }
 function renderKwFavorites() {
   const saved = getSavedKeywords();
-  kwFavRow.hidden = saved.length === 0;
-  kwFavChips.innerHTML = saved.map(item => `
-    <span class="chip">
-      ${escapeHtml(item.keyword)}
-      <span class="chip-x" data-kw="${escapeHtml(item.keyword)}">×</span>
-    </span>
-  `).join('');
-  kwFavChips.querySelectorAll('.chip-x').forEach(x => {
-    x.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleKeywordFavorite(x.dataset.kw);
-    });
-  });
-  kwFavChips.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', (e) => {
-      if (e.target.classList.contains('chip-x')) return;
-      runKeywordAnalysisFor(chip.querySelector('.chip-x').dataset.kw);
-    });
-  });
+  kwFavBtnCount.textContent = saved.length;
   if (!kwFavModal.classList.contains('hidden')) renderKwFavModal();
 }
 // 결과 테이블이 이미 그려진 상태에서 즐겨찾기만 바뀌었을 때 별 아이콘만 갱신

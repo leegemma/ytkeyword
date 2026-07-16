@@ -59,6 +59,9 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         <span id="savedListCount">0</span>
       </button>
+      <button class="ghost-btn" id="kwFavBtn" title="즐겨찾기 키워드" hidden>
+        ⭐ <span id="kwFavBtnCount">0</span>
+      </button>
       <button class="ghost-btn" id="quotaBtn" title="API 유닛 사용량">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         유닛
@@ -215,11 +218,6 @@
 
   <!-- 키워드 분석 탭 -->
   <section class="keyword-section" id="keywordSection" hidden>
-    <div class="kw-fav-row" id="kwFavRow" hidden>
-      <span class="kw-fav-row-label">⭐ 즐겨찾기</span>
-      <div class="history-chips" id="kwFavChips"></div>
-      <button class="link-btn" id="kwFavModalBtn" type="button">모두 보기</button>
-    </div>
     <p class="kw-disclaimer">* Search volume·Competition은 YouTube Data API로 해당 키워드 상위 노출 영상의 조회수·구독자수를 분석한 <b>추정치</b>입니다. VidIQ/TubeBuddy 등 실제 검색 트래픽 데이터가 아닙니다.</p>
 
     <p class="kw-empty" id="kwEmpty">키워드를 입력하고 분석 버튼을 클릭하세요.</p>
