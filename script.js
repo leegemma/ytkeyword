@@ -3377,7 +3377,7 @@ async function onKeywordAnalysisSearch() {
 
   try {
     const primary = await analyzeKeyword(keyword, apiKey);
-    const candidates = extractRelatedTerms(primary.titles, keyword, 5);
+    const candidates = extractRelatedTerms(primary.titles, keyword, 2);
 
     const related = [];
     for (const { word, count } of candidates) {
