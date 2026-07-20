@@ -33,6 +33,21 @@ const REGION_LANG = {
   FR:'fr', DE:'de', IT:'it', ES:'es', RU:'ru', BR:'pt', MX:'es',
   TR:'tr', SA:'ar', US:'en', GB:'en', CA:'en', AU:'en',
 };
+// 비라틴 문자 언어만 제목 필터 적용 (relevanceLanguage가 hint라 API 단에서 보장 안 됨)
+const LANG_SCRIPT_RE = {
+  'ko':      /[가-힣ᄀ-ᇿ㄰-㆏]/,
+  'ja':      /[぀-ヿ一-鿿]/,
+  'zh-Hans': /[一-鿿]/,
+  'zh-Hant': /[一-鿿]/,
+  'hi':      /[ऀ-ॿ]/,
+  'ar':      /[؀-ۿ]/,
+  'th':      /[฀-๿]/,
+  'ru':      /[Ѐ-ӿ]/,
+};
+function titleMatchesRegionLang(title, lang) {
+  const re = LANG_SCRIPT_RE[lang];
+  return re ? re.test(title) : true; // 라틴 계열은 필터 없음
+}
 const REGIONS = [
   { code: 'KR', flag: '🇰🇷', label: '한국' },
   { code: 'US', flag: '🇺🇸', label: '미국' },
@@ -1990,12 +2005,15 @@ async function onSearch() {
     const detailMap = mapBy(videoStats, 'id');
     const channelMap = mapBy(channelStats, 'id');
 
+    const regionLangFilter = currentRegion ? REGION_LANG[currentRegion] : null;
     allResults = videos.filter(v => {
       // 차단된 영상/채널 제외
       const vid = v.id?.videoId;
       const cid = v.snippet?.channelId;
       if (vid && blockedVideos.has(vid)) return false;
       if (cid && blockedChannels.has(cid)) return false;
+      // 지역 언어 필터: 비라틴 문자권은 제목에 해당 문자 없으면 제외
+      if (regionLangFilter && !titleMatchesRegionLang(v.snippet.title, regionLangFilter)) return false;
       return true;
     }).map(v => {
       const d = detailMap[v.id.videoId] || {};
