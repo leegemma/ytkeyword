@@ -27,6 +27,12 @@ const DEFAULT_FEATURES = { summary: false };
 const LS_KEY_REGION = 'ytkw:region';
 const LS_KEY_MODE = 'ytkw:mode';
 
+const REGION_LANG = {
+  KR:'ko', JP:'ja', CN:'zh-Hans', TW:'zh-Hant', HK:'zh-Hant',
+  VN:'vi', TH:'th', ID:'id', PH:'fil', IN:'hi',
+  FR:'fr', DE:'de', IT:'it', ES:'es', RU:'ru', BR:'pt', MX:'es',
+  TR:'tr', SA:'ar', US:'en', GB:'en', CA:'en', AU:'en',
+};
 const REGIONS = [
   { code: 'KR', flag: '🇰🇷', label: '한국' },
   { code: 'US', flag: '🇺🇸', label: '미국' },
@@ -765,8 +771,7 @@ function applyPreset(preset) {
   }
 
   if (preset === 'outliers') {
-    sortOrderEl.value = 'performance';
-    currentSort = { key: 'performance', dir: 'desc' };
+    currentSort = { key: 'outlierScore', dir: 'desc' };
   } else if (preset === 'trending') {
     currentSort = { key: 'vph', dir: 'desc' };
   } else if (preset === 'latest') {
@@ -2010,6 +2015,7 @@ async function onSearch() {
       const avgVideoViews = channelVideoCount > 0 ? channelViews / channelVideoCount : null;
       const contribution = avgVideoViews > 0 ? views / avgVideoViews : null;
       const exposure = views > 0 ? (likes + comments) / views * 100 : null;
+      const outlierScore = contribution != null ? contribution / Math.sqrt(Math.max(1, days)) : null;
 
       const duration = d.contentDetails?.duration || '';
       const durationSec = parseDurationSec(duration);
@@ -2047,6 +2053,7 @@ async function onSearch() {
         performance,
         recentPerformance,
         contribution,
+        outlierScore,
         exposure,
         duration: formatDuration(durationSec),
         durationSec,
@@ -3205,7 +3212,11 @@ function buildSearchParams(q) {
   const days = parseInt(periodEl.value, 10);
   if (days) p.publishedAfter = new Date(Date.now() - days * 86400000).toISOString();
 
-  if (currentRegion) p.regionCode = currentRegion;
+  if (currentRegion) {
+    p.regionCode = currentRegion;
+    const lang = REGION_LANG[currentRegion];
+    if (lang) p.relevanceLanguage = lang;
+  }
 
   return p;
 }
