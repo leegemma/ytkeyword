@@ -4070,7 +4070,10 @@ const HISTORY_MAX = 200;
 function getHistory() {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY_HISTORY) || '[]');
-    // 이전 형식 마이그레이션: string[] / mode 없는 객체 → 영상 모드로 가정
+    if (!Array.isArray(raw)) {
+      localStorage.removeItem(LS_KEY_HISTORY);
+      return [];
+    }
     return raw.map(x => typeof x === 'string'
       ? { q: x, at: 0, count: 1, mode: 'video' }
       : { mode: 'video', count: 1, at: 0, ...x });
