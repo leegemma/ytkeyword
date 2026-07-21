@@ -958,7 +958,7 @@ function populateVideoTab(r) {
   $('detailDuration').textContent = r.duration || '';
   $('detailTitle').textContent = r.title;
   $('detailMeta').textContent =
-    `${fmtCompact(r.viewCount)} views · ${escapeText(r.channelTitle)} · ${fmtDate(r.publishedAt)} · ${r.days}일 전`;
+    `${fmtCompact(r.viewCount)} views · ${safeStr(r.channelTitle)} · ${fmtDate(r.publishedAt)} · ${r.days}일 전`;
   $('detailYouTubeBtn').href = `https://www.youtube.com/watch?v=${r.videoId}`;
 
   // Key metrics pills (Engagement / Outlier / VPH)
@@ -1179,7 +1179,7 @@ function handleQuickAction(action) {
   }
 }
 
-function escapeText(s) { return String(s ?? ''); }
+function safeStr(s) { return String(s ?? ''); }
 
 /* ───────── Gemini 요약 ───────── */
 function hasCachedSummary(videoId) {
@@ -1714,8 +1714,9 @@ function renderSavedList() {
   // mini-grid 패턴 (가로/세로 분리)
   renderMiniGrid(grid, savedVideos.map(v => ({ ...v, isShorts: v.isPortrait ?? v.isShorts, isPortrait: v.isPortrait ?? v.isShorts })));
   // 저장 해제 버튼 추가 (각 카드 위)
-  grid.querySelectorAll('.result-card').forEach((card, i) => {
-    const v = savedVideos[i];
+  const savedByVideoId = new Map(savedVideos.map(v => [v.videoId, v]));
+  grid.querySelectorAll('.result-card[data-mini-id]').forEach((card) => {
+    const v = savedByVideoId.get(card.dataset.miniId);
     if (!v) return;
     const btn = document.createElement('button');
     btn.className = 'card-save-btn saved';
@@ -2407,32 +2408,34 @@ async function onSearchChannels(q, apiKey) {
 }
 
 async function fetchLatestVideosForChannels(channels, apiKey) {
-  const promises = channels.map(async (c) => {
-    if (!c.uploadsPlaylistId) return;
-    try {
-      const data = await ytFetch('playlistItems', {
-        part: 'snippet,contentDetails',
-        playlistId: c.uploadsPlaylistId,
-        maxResults: 1,
-        key: apiKey,
-      });
-      const item = data.items?.[0];
-      if (!item) return;
-      const videoId = item.contentDetails?.videoId
-        || item.snippet?.resourceId?.videoId;
-      c.latestVideo = {
-        videoId,
-        title: decodeHtml(item.snippet.title),
-        thumbnail: item.snippet.thumbnails?.medium?.url
-          || item.snippet.thumbnails?.default?.url || '',
-        publishedAt: item.snippet.publishedAt,
-      };
-      c.lastUploadAt = item.snippet.publishedAt;
-    } catch (err) {
-      // 개별 실패 무시
-    }
-  });
-  await Promise.all(promises);
+  const BATCH = 5;
+  for (let i = 0; i < channels.length; i += BATCH) {
+    await Promise.all(channels.slice(i, i + BATCH).map(async (c) => {
+      if (!c.uploadsPlaylistId) return;
+      try {
+        const data = await ytFetch('playlistItems', {
+          part: 'snippet,contentDetails',
+          playlistId: c.uploadsPlaylistId,
+          maxResults: 1,
+          key: apiKey,
+        });
+        const item = data.items?.[0];
+        if (!item) return;
+        const videoId = item.contentDetails?.videoId
+          || item.snippet?.resourceId?.videoId;
+        c.latestVideo = {
+          videoId,
+          title: decodeHtml(item.snippet.title),
+          thumbnail: item.snippet.thumbnails?.medium?.url
+            || item.snippet.thumbnails?.default?.url || '',
+          publishedAt: item.snippet.publishedAt,
+        };
+        c.lastUploadAt = item.snippet.publishedAt;
+      } catch (err) {
+        // 개별 실패 무시
+      }
+    }));
+  }
 }
 
 function sortChannels() {
@@ -2683,7 +2686,8 @@ async function loadAvgLikes() {
   try {
     const apiKey = getApiKey();
     if (!apiKey) return;
-    const playlistId = await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
+    const playlistId = currentChannelDetail.channel.uploadsPlaylistId
+      || await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
     if (!playlistId) return;
     // 최근 영상 10개의 좋아요 평균
     const data = await ytFetch('playlistItems', {
@@ -2942,7 +2946,8 @@ async function loadChannelLatest() {
   try {
     const apiKey = getApiKey();
     if (!apiKey) { grid.innerHTML = '<p class="empty-text">API 키 필요</p>'; return; }
-    const playlistId = await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
+    const playlistId = currentChannelDetail.channel.uploadsPlaylistId
+      || await getUploadsPlaylistId(currentChannelDetail.channel.channelId, apiKey);
     if (!playlistId) {
       grid.innerHTML = '<p class="empty-text">최근 영상을 불러올 수 없음</p>';
       return;
@@ -3272,6 +3277,7 @@ async function ytFetch(endpoint, params) {
     Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   const res = await fetch(url);
   const data = await res.json();
+  trackQuota(endpoint);
   if (!res.ok || data.error) {
     const msg = data.error?.message || `HTTP ${res.status}`;
     if (data.error?.errors?.[0]?.reason === 'quotaExceeded') {
@@ -3279,7 +3285,6 @@ async function ytFetch(endpoint, params) {
     }
     throw new Error(msg);
   }
-  trackQuota(endpoint);
   return data;
 }
 
@@ -3651,6 +3656,7 @@ async function onKeywordAnalysisSearch() {
 
     const related = [];
     for (const { word, count } of candidates) {
+      if (runToken !== kwRunToken) break;
       try {
         const r = await analyzeKeyword(word, apiKey);
         r.relatedScore = Math.round((count / primary.titles.length) * 100) / 10;
@@ -3775,7 +3781,7 @@ function renderKeywordResults(primary, related) {
   kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
 
   const rows = [{ ...primary, relatedScore: null }, ...related];
-  resultCount.textContent = rows.length + '개';
+  resultCountEl.textContent = rows.length + '개';
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
       <td>
@@ -4436,6 +4442,8 @@ async function exportData() {
     // 캐시는 제외 (재생성 가능, 용량 큼)
     if (k.startsWith('ytkw:summary:')) continue;
     if (k.startsWith('ytkw:aspect:')) continue;
+    // 인증 정보는 제외
+    if (k === 'ytkw:githubPat') continue;
     data[k] = localStorage.getItem(k);
     count++;
   }
@@ -4462,6 +4470,7 @@ async function exportData() {
       const writable = await fh.createWritable();
       await writable.write(blob);
       await writable.close();
+      showToast(`💾 ${count}개 항목 백업됨`);
       return;
     } catch (e) {
       if (e.name === 'AbortError') return; // 사용자가 취소
@@ -4652,6 +4661,8 @@ function mergeImportedData(newData) {
   mergeIdArray('ytkw:blockedVideos', newData['ytkw:blockedVideos']);
   // 차단 채널 (객체, 키 기준 merge)
   mergeObject('ytkw:blockedChannels', newData['ytkw:blockedChannels']);
+  // 경쟁 채널 (id 기준 중복 제거, savedAt 최신 우선)
+  mergeArrayById('ytkw:competitors', newData['ytkw:competitors'], 'id', 'savedAt');
   // 검색 기록 (q+mode 기준, count 합산, at 최신)
   mergeHistory(newData['ytkw:history']);
   // 요약 캐시 (있으면 합치기 — 충돌 시 새 파일 우선)
