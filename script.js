@@ -129,6 +129,14 @@ const channelsWrap   = $('channelsWrap');
 const channelsBody   = $('channelsBody');
 const channelDetailModal = $('channelDetailModal');
 const keywordSection    = $('keywordSection');
+const ideaSection       = $('ideaSection');
+const ideaIntro         = $('ideaIntro');
+const ideaLoading       = $('ideaLoading');
+const ideaResults       = $('ideaResults');
+const ideaVideoList     = $('ideaVideoList');
+const ideaKwList        = $('ideaKwList');
+const ideaVideoCount    = $('ideaVideoCount');
+const ideaKwCount       = $('ideaKwCount');
 
 const kwEmpty           = $('kwEmpty');
 const kwLoading         = $('kwLoading');
@@ -248,18 +256,23 @@ function applySearchMode() {
     t.classList.toggle('active', t.dataset.mode === searchMode);
   });
   const isKeywordMode = searchMode === 'keyword';
+  const isIdeaMode    = searchMode === 'idea';
+  const isUtilMode    = isKeywordMode || isIdeaMode;
   if (searchMode === 'channel') {
     keywordInput.placeholder = '채널 관련 키워드 입력';
   } else if (isKeywordMode) {
     keywordInput.placeholder = '분석할 키워드 입력 (예: 다이어트 레시피)';
+  } else if (isIdeaMode) {
+    keywordInput.placeholder = '아이디어를 찾을 주제 입력 (예: 요리, 운동, 부업)';
   } else {
     keywordInput.placeholder = '단어 또는 문장 입력';
   }
-  filterBtn.hidden = isKeywordMode;
+  filterBtn.hidden = isUtilMode;
   kwFavBtn.hidden = !isKeywordMode;
-  document.querySelector('.settings-bar').hidden = isKeywordMode;
-  document.querySelector('main.results').hidden = isKeywordMode;
+  document.querySelector('.settings-bar').hidden = isUtilMode;
+  document.querySelector('main.results').hidden = isUtilMode;
   keywordSection.hidden = !isKeywordMode;
+  ideaSection.hidden    = !isIdeaMode;
 }
 
 function setSearchMode(mode) {
@@ -270,8 +283,9 @@ function setSearchMode(mode) {
   renderHistory(); // 모드별 history 칩 갱신
   if (mode === 'keyword') {
     renderKwFavorites();
-    return; // 키워드 탭은 아래 영상/채널 결과 초기화 로직 불필요
+    return;
   }
+  if (mode === 'idea') return;
   // 결과 영역 초기화
   tableWrap.hidden = true;
   cardGrid.hidden = true;
@@ -1954,12 +1968,9 @@ async function onSearch() {
     return;
   }
 
-  if (searchMode === 'channel') {
-    return onSearchChannels(q, apiKey);
-  }
-  if (searchMode === 'keyword') {
-    return onKeywordAnalysisSearch();
-  }
+  if (searchMode === 'channel') return onSearchChannels(q, apiKey);
+  if (searchMode === 'keyword') return onKeywordAnalysisSearch();
+  if (searchMode === 'idea')    return onIdeaSearch(q, apiKey);
 
   hasSearched = true;
   $('settingsSearchBtn').hidden = false;
@@ -3277,6 +3288,189 @@ function trackQuota(endpoint) {
   localStorage.setItem(LS_KEY_QUOTA, JSON.stringify(usage));
 }
 
+/* ───────── 아이디어 탭 ─────────
+ * 주제 키워드로 YouTube 검색 → 아웃라이어 영상 추출 + 제목 빈도 분석으로 키워드 아이디어 제안
+ */
+
+function extractIdeaKeywords(titles, limit = 8) {
+  const uniFreq = {}, biFreq = {};
+  titles.forEach(title => {
+    const tokens = tokenizeTitle(title);
+    const seen = new Set();
+    tokens.forEach(w => {
+      if (!seen.has(w)) { seen.add(w); uniFreq[w] = (uniFreq[w] || 0) + 1; }
+    });
+    for (let i = 0; i < tokens.length - 1; i++) {
+      if (tokens[i].length >= 2 && tokens[i + 1].length >= 2) {
+        const bi = tokens[i] + ' ' + tokens[i + 1];
+        biFreq[bi] = (biFreq[bi] || 0) + 1;
+      }
+    }
+  });
+  const candidates = [
+    ...Object.entries(uniFreq).filter(([, c]) => c >= 3).map(([w, c]) => ({ phrase: w, count: c })),
+    ...Object.entries(biFreq).filter(([, c]) => c >= 2).map(([w, c]) => ({ phrase: w, count: c * 1.8 })),
+  ];
+  return candidates.sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+function ideaOutlierGrade(score) {
+  if (score >= 15) return 'S';
+  if (score >= 6)  return 'A';
+  if (score >= 2)  return 'B';
+  return 'C';
+}
+
+async function onIdeaSearch(q, apiKey) {
+  saveHistory(q);
+  renderHistory();
+
+  ideaIntro.hidden   = true;
+  ideaLoading.hidden = false;
+  ideaResults.hidden = true;
+  progressBar.classList.add('active');
+
+  try {
+    const params = buildSearchParams(q);
+    params.maxResults = 50;
+    const search = await ytFetch('search', { ...params, key: apiKey });
+
+    const regionLangFilter = currentRegion ? REGION_LANG[currentRegion] : null;
+    const videos = (search.items || []).filter(v => {
+      if (!v.id?.videoId) return false;
+      if (regionLangFilter && !titleMatchesRegionLang(v.snippet.title, regionLangFilter)) return false;
+      return true;
+    });
+
+    if (!videos.length) {
+      showToast('결과 없음');
+      ideaIntro.hidden   = false;
+      ideaLoading.hidden = true;
+      progressBar.classList.remove('active');
+      return;
+    }
+
+    const videoIds   = videos.map(v => v.id.videoId);
+    const channelIds = [...new Set(videos.map(v => v.snippet.channelId))];
+
+    const [videoStats, channelStats] = await Promise.all([
+      fetchInBatches('videos',   { part: 'statistics,contentDetails' }, videoIds,   apiKey),
+      fetchInBatches('channels', { part: 'statistics' },                channelIds, apiKey),
+    ]);
+
+    const detailMap  = mapBy(videoStats,   'id');
+    const channelMap = mapBy(channelStats, 'id');
+
+    const enriched = videos.map(v => {
+      const d    = detailMap[v.id.videoId]        || {};
+      const c    = channelMap[v.snippet.channelId] || {};
+      const views             = num(d.statistics?.viewCount);
+      const subs              = num(c.statistics?.subscriberCount);
+      const channelViews      = num(c.statistics?.viewCount);
+      const channelVideoCount = num(c.statistics?.videoCount);
+      const days              = daysSince(v.snippet.publishedAt);
+      const avgVideoViews     = channelVideoCount > 0 ? channelViews / channelVideoCount : null;
+      const contribution      = avgVideoViews > 0 ? views / avgVideoViews : null;
+      const outlierScore      = contribution != null ? contribution / Math.sqrt(Math.max(1, days)) : null;
+      const durationSec       = parseDurationSec(d.contentDetails?.duration || '');
+      return {
+        videoId:      v.id.videoId,
+        title:        decodeHtml(v.snippet.title),
+        channelTitle: decodeHtml(v.snippet.channelTitle),
+        thumbnail:    v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url || '',
+        publishedAt:  v.snippet.publishedAt,
+        views, subs, days, durationSec, outlierScore, avgVideoViews,
+      };
+    }).filter(v => v.outlierScore != null);
+
+    enriched.sort((a, b) => b.outlierScore - a.outlierScore);
+    const topOutliers = enriched.slice(0, 5);
+
+    const allTitles    = enriched.map(v => v.title);
+    const ideaKeywords = extractIdeaKeywords(allTitles, 8);
+
+    renderIdeaResults(topOutliers, ideaKeywords);
+  } catch (err) {
+    showToast('오류: ' + (err.message || err));
+    console.error(err);
+    ideaIntro.hidden = false;
+  } finally {
+    ideaLoading.hidden = true;
+    progressBar.classList.remove('active');
+  }
+}
+
+function fmtViews(n) {
+  if (n >= 10000000) return Math.round(n / 10000000) + '천만';
+  if (n >= 1000000)  return (n / 1000000).toFixed(1).replace(/\.0$/, '') + '백만';
+  if (n >= 10000)    return Math.round(n / 10000) + '만';
+  if (n >= 1000)     return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+function fmtSubs(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1000)    return Math.round(n / 1000) + 'K';
+  return String(n);
+}
+
+function fmtDur(sec) {
+  if (!sec) return '';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function renderIdeaResults(outliers, keywords) {
+  ideaVideoCount.textContent = `${outliers.length}개`;
+  ideaKwCount.textContent    = `${keywords.length}개`;
+
+  ideaVideoList.innerHTML = outliers.map(v => {
+    const grade = ideaOutlierGrade(v.outlierScore);
+    const scoreDisplay = v.outlierScore >= 10
+      ? Math.round(v.outlierScore)
+      : v.outlierScore.toFixed(1);
+    const dur = fmtDur(v.durationSec);
+    return `<div class="idea-video-card">
+      <div class="idea-thumb-wrap">
+        <img class="idea-thumb" src="${escapeHtml(v.thumbnail)}" alt="" loading="lazy">
+        ${dur ? `<span class="idea-dur">${dur}</span>` : ''}
+      </div>
+      <div class="idea-video-meta">
+        <a class="idea-video-title" href="https://www.youtube.com/watch?v=${v.videoId}" target="_blank" rel="noopener">${escapeHtml(v.title)}</a>
+        <div class="idea-video-channel">${escapeHtml(v.channelTitle)}${v.subs ? ' · ' + fmtSubs(v.subs) + '구독' : ''}</div>
+        <div class="idea-video-stats">
+          <span>${fmtViews(v.views)} 조회</span>
+          <span>${v.days}일 전</span>
+        </div>
+      </div>
+      <div class="idea-score idea-score-${grade.toLowerCase()}">
+        <span class="idea-score-num">${scoreDisplay}</span>
+        <span class="idea-score-grade">${grade}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  ideaKwList.innerHTML = keywords.map((kw, i) => {
+    return `<div class="idea-kw-row" data-phrase="${escapeHtml(kw.phrase)}">
+      <span class="idea-kw-rank">${i + 1}</span>
+      <span class="idea-kw-text">${escapeHtml(kw.phrase)}</span>
+      <span class="idea-kw-freq">${Math.round(kw.count)}개 영상</span>
+      <span class="idea-kw-arrow">›</span>
+    </div>`;
+  }).join('');
+
+  ideaKwList.querySelectorAll('.idea-kw-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const phrase = row.dataset.phrase;
+      keywordInput.value = phrase;
+      setSearchMode('keyword');
+      onKeywordAnalysisSearch();
+    });
+  });
+
+  ideaResults.hidden = false;
+}
+
 /* ───────── 키워드 분석 탭 ─────────
  * YouTube Data API는 검색량/경쟁도를 직접 제공하지 않는다.
  * 대신 해당 키워드로 검색되는 상위 25개 영상의 조회수(→검색량 추정)와
@@ -3911,7 +4105,7 @@ function renderHistoryModal() {
   const h = getHistoryForMode();
   const filter = (historyFilter.value || '').trim().toLowerCase();
   const filtered = filter ? h.filter(item => item.q.toLowerCase().includes(filter)) : h;
-  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : '영상';
+  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : searchMode === 'idea' ? '아이디어' : '영상';
   $('historyHint').textContent = `${modeLabel} 검색 기록 ${h.length}개 · 모드별 분리 저장 · 클릭하면 다시 검색`;
   const listEl = $('historyList');
   listEl.innerHTML = filtered.map(item => `
@@ -3942,7 +4136,7 @@ function renderHistoryModal() {
 }
 
 function clearAllHistory() {
-  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : '영상';
+  const modeLabel = searchMode === 'channel' ? '채널' : searchMode === 'keyword' ? '키워드 분석' : searchMode === 'idea' ? '아이디어' : '영상';
   if (!confirm(`${modeLabel} 검색 기록을 모두 삭제하시겠습니까? (다른 모드 기록은 유지됩니다)`)) return;
   // 현재 모드 기록만 삭제, 다른 모드는 유지
   const h = getHistory().filter(x => x.mode !== searchMode);

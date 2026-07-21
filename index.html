@@ -20,6 +20,7 @@
     <button class="mode-tab active" data-mode="video" role="tab">📹 영상 찾기</button>
     <button class="mode-tab" data-mode="channel" role="tab">📺 채널 찾기</button>
     <button class="mode-tab" data-mode="keyword" role="tab">🔑 키워드 분석</button>
+    <button class="mode-tab" data-mode="idea" role="tab">🔥 아이디어</button>
   </nav>
 
   <!-- Top toolbar -->
@@ -215,6 +216,49 @@
       </table>
     </div>
   </main>
+
+  <!-- 아이디어 탭 -->
+  <section class="idea-section" id="ideaSection" hidden>
+    <div class="idea-intro" id="ideaIntro">
+      <p class="idea-intro-text">주제를 검색창에 입력하고 검색하세요.</p>
+      <p class="idea-intro-sub">예: 요리, 운동, 부업, 어린이교육, 영어공부</p>
+      <span class="idea-unit-note">
+        1회 스캔 약 <strong>~202 유닛</strong>
+        <span class="idea-unit-tip-wrap">
+          <span class="idea-unit-info-btn">i</span>
+          <span class="idea-unit-tip">
+            <span class="iut-title">유닛 소모 내역</span>
+            <span class="iut-row"><span class="iut-call">search.list (영상 50개)</span><span class="iut-cost">100 유닛</span></span>
+            <span class="iut-row"><span class="iut-call">videos.list (통계·상세)</span><span class="iut-cost">1 유닛</span></span>
+            <span class="iut-row"><span class="iut-call">channels.list (채널 평균뷰)</span><span class="iut-cost">1 유닛</span></span>
+            <span class="iut-divider"></span>
+            <span class="iut-total"><span>합계</span><span class="iut-total-val">~102–202 유닛</span></span>
+            <span class="iut-note">videos·channels는 결과 수에 따라 달라짐</span>
+          </span>
+        </span>
+      </span>
+    </div>
+    <p class="idea-loading" id="ideaLoading" hidden>아이디어 스캔 중...</p>
+    <div id="ideaResults" hidden>
+      <div class="idea-body">
+        <div class="idea-panel">
+          <div class="idea-panel-head">
+            <span class="idea-panel-title">아웃라이어 영상</span>
+            <span class="idea-badge idea-badge-fire" id="ideaVideoCount"></span>
+          </div>
+          <div id="ideaVideoList"></div>
+        </div>
+        <div class="idea-panel">
+          <div class="idea-panel-head">
+            <span class="idea-panel-title">키워드 아이디어</span>
+            <span class="idea-badge idea-badge-grn" id="ideaKwCount"></span>
+          </div>
+          <div id="ideaKwList"></div>
+          <p class="idea-kw-hint">클릭 시 키워드 분석 탭에서 상세 분석</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- 키워드 분석 탭 -->
   <section class="keyword-section" id="keywordSection" hidden>
