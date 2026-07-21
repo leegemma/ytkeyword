@@ -1618,6 +1618,12 @@ function updateSaveButtons(videoId, isSaved) {
     b.textContent = isSaved ? '★' : '☆';
     b.title = isSaved ? '저장 해제' : '저장';
   });
+  // 아이디어 탭 영상 카드
+  document.querySelectorAll(`.idea-save-btn[data-save-id="${CSS.escape(videoId)}"]`).forEach(b => {
+    b.classList.toggle('saved', isSaved);
+    b.textContent = isSaved ? '★' : '☆';
+    b.title = isSaved ? '저장 해제' : '저장';
+  });
   // 영상 디테일 모달 토글
   if (currentDetail?.result?.videoId === videoId) {
     const btn = $('videoSaveToggle');
@@ -3292,38 +3298,64 @@ function trackQuota(endpoint) {
  * 주제 키워드로 YouTube 검색 → 아웃라이어 영상 추출 + 제목 빈도 분석으로 키워드 아이디어 제안
  */
 
-function extractIdeaKeywords(titles, limit = 8) {
-  const uniFreq = {}, biFreq = {};
-  titles.forEach(title => {
-    const tokens = tokenizeTitle(title);
+function normalizeOutlierScore(raw) {
+  if (!raw || raw <= 0) return 0;
+  return Math.min(99, Math.round(Math.log10(1 + raw * 10) / Math.log10(1001) * 100));
+}
+
+function ideaOutlierGrade(normalized) {
+  if (normalized >= 90) return 'S';
+  if (normalized >= 70) return 'A';
+  if (normalized >= 50) return 'B';
+  return 'C';
+}
+
+function extractIdeaKeywords(videos, limit = 8) {
+  const uniFreq = {}, biFreq = {}, uniVids = {}, biVids = {};
+  videos.forEach(v => {
+    const tokens = tokenizeTitle(v.title);
     const seen = new Set();
     tokens.forEach(w => {
-      if (!seen.has(w)) { seen.add(w); uniFreq[w] = (uniFreq[w] || 0) + 1; }
+      if (!seen.has(w)) {
+        seen.add(w);
+        uniFreq[w] = (uniFreq[w] || 0) + 1;
+        (uniVids[w] = uniVids[w] || []).push(v);
+      }
     });
     for (let i = 0; i < tokens.length - 1; i++) {
       if (tokens[i].length >= 2 && tokens[i + 1].length >= 2) {
         const bi = tokens[i] + ' ' + tokens[i + 1];
         biFreq[bi] = (biFreq[bi] || 0) + 1;
+        (biVids[bi] = biVids[bi] || []).push(v);
       }
     }
   });
+  const compToneMap = { worst: 'great', bad: 'good', normal: 'normal', good: 'bad', great: 'worst' };
+  const volLabels  = { worst: '검색 낮음', bad: '검색 낮음', normal: '검색 중간', good: '검색 높음', great: '검색 높음' };
+  const compLabels = { great: '경쟁 낮음', good: '경쟁 낮음', normal: '경쟁 중간', bad: '경쟁 높음', worst: '경쟁 높음' };
   const candidates = [
-    ...Object.entries(uniFreq).filter(([, c]) => c >= 3).map(([w, c]) => ({ phrase: w, count: c })),
-    ...Object.entries(biFreq).filter(([, c]) => c >= 2).map(([w, c]) => ({ phrase: w, count: c * 1.8 })),
+    ...Object.entries(uniFreq).filter(([, c]) => c >= 3).map(([w, c]) => ({ phrase: w, count: c, vids: uniVids[w] })),
+    ...Object.entries(biFreq).filter(([, c]) => c >= 2).map(([w, c]) => ({ phrase: w, count: c * 1.8, vids: biVids[w] })),
   ];
-  return candidates.sort((a, b) => b.count - a.count).slice(0, limit);
-}
-
-function ideaOutlierGrade(score) {
-  if (score >= 15) return 'S';
-  if (score >= 6)  return 'A';
-  if (score >= 2)  return 'B';
-  return 'C';
+  return candidates.sort((a, b) => b.count - a.count).slice(0, limit).map(kw => {
+    const vids = kw.vids;
+    const avgViews = vids.reduce((s, v) => s + (v.views || 0), 0) / vids.length;
+    const avgSubs  = vids.reduce((s, v) => s + (v.subs  || 0), 0) / vids.length;
+    const volTier  = rateTier(avgViews, [750, 5000, 30000, 150000]);
+    const compTier = compToneMap[rateTier(avgSubs, [10000, 100000, 500000, 3000000])] || 'normal';
+    return {
+      phrase:    kw.phrase,
+      count:     Math.round(kw.count),
+      volLabel:  volLabels[volTier]  || '검색 중간',
+      volTier,
+      compLabel: compLabels[compTier] || '경쟁 중간',
+      compTier,
+    };
+  });
 }
 
 async function onIdeaSearch(q, apiKey) {
-  saveHistory(q);
-  renderHistory();
+  pushHistory(q);
 
   ideaIntro.hidden   = true;
   ideaLoading.hidden = false;
@@ -3386,8 +3418,7 @@ async function onIdeaSearch(q, apiKey) {
     enriched.sort((a, b) => b.outlierScore - a.outlierScore);
     const topOutliers = enriched.slice(0, 5);
 
-    const allTitles    = enriched.map(v => v.title);
-    const ideaKeywords = extractIdeaKeywords(allTitles, 8);
+    const ideaKeywords = extractIdeaKeywords(enriched, 8);
 
     renderIdeaResults(topOutliers, ideaKeywords);
   } catch (err) {
@@ -3425,11 +3456,9 @@ function renderIdeaResults(outliers, keywords) {
   ideaKwCount.textContent    = `${keywords.length}개`;
 
   ideaVideoList.innerHTML = outliers.map(v => {
-    const grade = ideaOutlierGrade(v.outlierScore);
-    const scoreDisplay = v.outlierScore >= 10
-      ? Math.round(v.outlierScore)
-      : v.outlierScore.toFixed(1);
-    const dur = fmtDur(v.durationSec);
+    const norm  = normalizeOutlierScore(v.outlierScore);
+    const grade = ideaOutlierGrade(norm);
+    const dur   = fmtDur(v.durationSec);
     const isSaved = savedVideoIds.has(v.videoId);
     return `<div class="idea-video-card">
       <div class="idea-thumb-wrap">
@@ -3445,9 +3474,9 @@ function renderIdeaResults(outliers, keywords) {
         </div>
       </div>
       <div class="idea-card-right">
-        <button class="idea-save-btn save-btn${isSaved ? ' saved' : ''}" data-save-id="${escapeHtml(v.videoId)}" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
+        <button class="idea-save-btn${isSaved ? ' saved' : ''}" data-save-id="${escapeHtml(v.videoId)}" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
         <div class="idea-score idea-score-${grade.toLowerCase()}">
-          <span class="idea-score-num">${scoreDisplay}</span>
+          <span class="idea-score-num">${norm}</span>
           <span class="idea-score-grade">${grade}</span>
         </div>
       </div>
@@ -3467,7 +3496,11 @@ function renderIdeaResults(outliers, keywords) {
     return `<div class="idea-kw-row" data-phrase="${escapeHtml(kw.phrase)}">
       <span class="idea-kw-rank">${i + 1}</span>
       <span class="idea-kw-text">${escapeHtml(kw.phrase)}</span>
-      <span class="idea-kw-freq">${Math.round(kw.count)}개 영상</span>
+      <span class="idea-kw-freq">${kw.count}개 영상</span>
+      <span class="idea-kw-badges">
+        <span class="idea-kw-badge idea-kw-vol-${kw.volTier}">${escapeHtml(kw.volLabel)}</span>
+        <span class="idea-kw-badge idea-kw-comp-${kw.compTier}">${escapeHtml(kw.compLabel)}</span>
+      </span>
       <span class="idea-kw-arrow">›</span>
     </div>`;
   }).join('');

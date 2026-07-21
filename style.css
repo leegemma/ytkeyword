@@ -2632,13 +2632,14 @@ th[data-tooltip] {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
-  color: var(--text-muted);
+  font-size: 18px;
+  color: rgba(128,128,128,0.5);
   line-height: 1;
   padding: 2px;
   transition: color 0.15s, transform 0.1s;
+  display: block;
 }
-.idea-save-btn:hover { color: #f59e0b; transform: scale(1.15); }
+.idea-save-btn:hover { color: #f59e0b; transform: scale(1.2); }
 .idea-save-btn.saved { color: #f59e0b; }
 
 .idea-thumb-wrap {
@@ -2711,6 +2712,19 @@ th[data-tooltip] {
 .idea-kw-rank  { font-size: 10px; color: var(--text-muted); opacity: 0.5; width: 14px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .idea-kw-text  { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-primary); }
 .idea-kw-freq  { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.idea-kw-badges { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+.idea-kw-badge  { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 500; white-space: nowrap; }
+
+/* 검색량 배지 (vol): great/good=높음, normal=중간, bad/worst=낮음 */
+.idea-kw-vol-great, .idea-kw-vol-good   { background: rgba(34,197,94,0.15);  color: #22c55e; }
+.idea-kw-vol-normal                      { background: rgba(245,197,24,0.15); color: #f5c518; }
+.idea-kw-vol-bad,   .idea-kw-vol-worst  { background: rgba(128,128,128,0.12); color: var(--text-muted); }
+
+/* 경쟁도 배지 (comp): great/good=낮음(좋음), normal=중간, bad/worst=높음(나쁨) */
+.idea-kw-comp-great, .idea-kw-comp-good  { background: rgba(34,197,94,0.15);  color: #22c55e; }
+.idea-kw-comp-normal                      { background: rgba(245,197,24,0.15); color: #f5c518; }
+.idea-kw-comp-bad,   .idea-kw-comp-worst { background: rgba(248,113,113,0.15); color: #f87171; }
+
 .idea-kw-arrow { font-size: 14px; color: var(--text-muted); opacity: 0.4; }
 .idea-kw-hint  { font-size: 10px; color: var(--text-muted); opacity: 0.5; text-align: center; margin-top: 4px; }
 
