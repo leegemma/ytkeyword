@@ -3430,6 +3430,7 @@ function renderIdeaResults(outliers, keywords) {
       ? Math.round(v.outlierScore)
       : v.outlierScore.toFixed(1);
     const dur = fmtDur(v.durationSec);
+    const isSaved = savedVideoIds.has(v.videoId);
     return `<div class="idea-video-card">
       <div class="idea-thumb-wrap">
         <img class="idea-thumb" src="${escapeHtml(v.thumbnail)}" alt="" loading="lazy">
@@ -3443,12 +3444,24 @@ function renderIdeaResults(outliers, keywords) {
           <span>${v.days}일 전</span>
         </div>
       </div>
-      <div class="idea-score idea-score-${grade.toLowerCase()}">
-        <span class="idea-score-num">${scoreDisplay}</span>
-        <span class="idea-score-grade">${grade}</span>
+      <div class="idea-card-right">
+        <button class="idea-save-btn save-btn${isSaved ? ' saved' : ''}" data-save-id="${escapeHtml(v.videoId)}" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
+        <div class="idea-score idea-score-${grade.toLowerCase()}">
+          <span class="idea-score-num">${scoreDisplay}</span>
+          <span class="idea-score-grade">${grade}</span>
+        </div>
       </div>
     </div>`;
   }).join('');
+
+  ideaVideoList.querySelectorAll('.idea-save-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const vid = btn.dataset.saveId;
+      const fallback = outliers.find(v => v.videoId === vid);
+      toggleSave(vid, fallback);
+    });
+  });
 
   ideaKwList.innerHTML = keywords.map((kw, i) => {
     return `<div class="idea-kw-row" data-phrase="${escapeHtml(kw.phrase)}">
