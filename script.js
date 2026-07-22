@@ -3342,7 +3342,17 @@ function extractIdeaKeywords(videos, limit = 8) {
     ...Object.entries(uniFreq).filter(([, c]) => c >= 3).map(([w, c]) => ({ phrase: w, count: c, vids: uniVids[w] })),
     ...Object.entries(biFreq).filter(([, c]) => c >= 2).map(([w, c]) => ({ phrase: w, count: c * 1.8, vids: biVids[w] })),
   ];
-  return candidates.sort((a, b) => b.count - a.count).slice(0, limit).map(kw => {
+  const sorted = candidates.sort((a, b) => b.count - a.count);
+  // 포함 관계 중복 제거: 이미 선택된 구문의 부분/상위 문자열이면 건너뜀
+  const deduped = [];
+  for (const kw of sorted) {
+    const dominated = deduped.some(r =>
+      r.phrase.includes(kw.phrase) || kw.phrase.includes(r.phrase)
+    );
+    if (!dominated) deduped.push(kw);
+    if (deduped.length >= limit) break;
+  }
+  return deduped.map(kw => {
     const vids = kw.vids;
     const avgViews = vids.reduce((s, v) => s + (v.views || 0), 0) / vids.length;
     const avgSubs  = vids.reduce((s, v) => s + (v.subs  || 0), 0) / vids.length;
