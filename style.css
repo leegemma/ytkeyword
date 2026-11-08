@@ -23,6 +23,7 @@
   --action-hover: #166534;
   --action-text: #ffffff;
   --saved-text: #422006;
+  --text-on-bright: #0a0a0a;
   --focus-ring: #166534;
   --input-border: #6b7280;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
@@ -472,9 +473,9 @@ body.mode-channel #bulkActions {
   padding: 2px 8px;
 }
 .mult-extreme  { background: #dc2626; }  /* >= 100x — 대박 */
-.mult-high     { background: #ef4444; }  /* 10-99x */
-.mult-mid      { background: #a855f7; }  /* 3-10x */
-.mult-low      { background: #3b82f6; }  /* 1-3x */
+.mult-high     { background: #ef4444; color: var(--text-on-bright); }  /* 10-99x */
+.mult-mid      { background: #a855f7; color: var(--text-on-bright); }  /* 3-10x */
+.mult-low      { background: #3b82f6; color: var(--text-on-bright); }  /* 1-3x */
 .mult-minimal  { background: #6b7280; }  /* < 1x */
 
 /* worst→great 5단계 배지 색상 — 기존에 .mini-stat-badge에만 정의돼 있어서
@@ -3049,3 +3050,23 @@ body.modal-open { overflow: hidden; }
 .saved-badge, .mini-save-btn.saved, .save-toggle-btn.saved { color: var(--saved-text); }
 .saved-channel-open { display: flex; align-items: center; flex: 1; min-width: 0; gap: 12px; text-decoration: none; color: inherit; }
 .idea-video-card .board-picker-inline { position: absolute; left: 8px; top: 8px; max-width: calc(100% - 60px); }
+.saved-ai-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 16px; }
+.saved-ai-tools .ghost-btn { color: var(--text-primary); border-color: var(--input-border); }
+.saved-ai-tools .ghost-btn:disabled { color: var(--text-muted); cursor: default; }
+.saved-ai-tools .link-btn { color: var(--green-dark); text-decoration: underline; }
+#classificationStatus { flex: 1 1 280px; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.shorts-view-note { margin: -4px 0 16px; color: var(--text-muted); font-size: 12px; }
+.shorts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 16px; }
+.shorts-grid .card-title { -webkit-line-clamp: 3; font-size: 13px; }
+.shorts-grid .card-channel, .shorts-grid .card-meta { font-size: 12px; }
+.shorts-grid .vph-pill { font-size: 10px; padding: 2px 5px; }
+.shorts-grid .saved-badge { display: none; }
+.shorts-empty { padding: 28px 16px; border: 1px solid var(--border-muted); border-radius: var(--radius); background: var(--bg); text-align: center; color: var(--text-muted); }
+.shorts-empty p { margin: 0 0 12px; }
+.shorts-empty .ghost-btn { color: var(--text-primary); }
+@media (max-width: 600px) {
+  .shorts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .shorts-grid .card-info { padding: 10px; }
+  .shorts-grid .card-save-btn { width: 26px; height: 26px; right: 6px; }
+  .shorts-grid .board-picker { padding: 5px 7px; font-size: 11px; }
+}

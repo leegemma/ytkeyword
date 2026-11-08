@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=32" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -137,6 +137,10 @@
       <button class="view-mode-btn" data-view="cards" title="카드 보기">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Cards
+      </button>
+      <button class="view-mode-btn" data-view="shorts" title="Shorts 보기 · 3분 이하 영상">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="m10 9 5 3-5 3Z"/></svg>
+        Shorts
       </button>
     </div>
   </section>
@@ -326,6 +330,11 @@
       <button class="detail-tab" data-savedtab="channels" type="button" aria-pressed="false">채널 <span id="savedChannelsCount">0</span></button>
     </nav>
     <nav id="savedBoardTabs" class="saved-board-tabs" aria-label="영상 보드"></nav>
+    <div id="savedAiTools" class="saved-ai-tools">
+      <button id="classifySavedBtn" class="ghost-btn" type="button">✨ AI 자동 분류</button>
+      <button id="classificationKeyBtn" class="link-btn" type="button">Gemini API 키 등록</button>
+      <p id="classificationStatus" role="status" aria-live="polite"></p>
+    </div>
     <p class="hint" id="savedListHint"></p>
     <div id="savedListGrid"></div>
   </section>
@@ -479,9 +488,9 @@
           API 및 서비스 → 라이브러리 → "YouTube Data API v3" 사용 설정 → API 키 만들기
         </p>
 
-        <h3 class="key-section-title" style="margin-top:24px">Gemini API (영상 요약용 · 선택)</h3>
+        <h3 class="key-section-title" style="margin-top:24px">Gemini API (영상 요약·자동 분류)</h3>
         <p class="hint">
-          ✨ "요약" 버튼으로 영상을 Gemini AI가 분석하게 하려면 필요합니다. 무료 발급 가능.
+          영상 요약과 저장 영상의 AI 자동 분류에 사용합니다. 자동 분류는 제목·채널·설명·태그를 기준으로 하며, 판단이 불확실한 영상은 미분류로 남깁니다.
         </p>
         <input type="text" id="geminiKeyInput" aria-label="Gemini API 키 (선택)" placeholder="AIzaSy…" class="text-input-lg" />
         <p class="hint-small">
@@ -1017,6 +1026,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <div id="colTooltip" class="col-tooltip" hidden></div>
 
-  <script src="script.js?v=37"></script>
+  <script src="script.js?v=38"></script>
 </body>
 </html>
