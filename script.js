@@ -76,7 +76,7 @@ const REGIONS = [
   { code: '',   flag: '🌐', label: '전체 (지역 무관)' },
 ];
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_CLASSIFICATION_MODEL = 'gemini-3.8-flash';
+const GEMINI_CLASSIFICATION_MODEL = 'gemini-3.5-flash-lite';
 
 const $ = (id) => document.getElementById(id);
 
@@ -255,6 +255,12 @@ let aiClassificationTimer = null;
 let aiClassificationRunning = false;
 let aiClassificationMessage = '';
 let aiClassificationAbort = null;
+let aiClassificationProgress = '';
+let aiClassificationLastError = null;
+try {
+  aiClassificationLastError = JSON.parse(sessionStorage.getItem('ytkw:classificationError') || 'null');
+  if (aiClassificationLastError) aiClassificationMessage = aiClassificationLastError.summary;
+} catch {}
 
 function freshFilters() {
   return {
@@ -282,7 +288,7 @@ function init() {
   updateSavedListButton();
   renderKwFavorites();
   refreshClassificationUI();
-  queueUnclassifiedVideos(false);
+  if (!aiClassificationLastError) queueUnclassifiedVideos(false);
   if (!getApiKey()) {
     showToast('API 키를 먼저 등록하세요 (우상단 🔑)');
   }
@@ -1683,13 +1689,15 @@ function refreshClassificationUI() {
   const candidates = savedVideos.filter(video => isUnclassifiedVideo(video) && video.classificationSource !== 'manual');
   const button = $('classifySavedBtn');
   button.disabled = aiClassificationRunning || !!pending || !candidates.length;
-  button.textContent = pending ? `✨ AI 분류 중 (${pending}개)` : '✨ AI 자동 분류';
+  button.textContent = pending ? `✨ AI 분류 중 (${pending}개)` : '✨ AI 10개씩 분류';
   button.setAttribute('aria-busy', String(!!pending));
   $('classificationKeyBtn').hidden = hasKey;
   $('classificationStatus').textContent = !hasKey
     ? 'Gemini API 키를 등록하면 자동 분류합니다. 키가 없으면 미분류로 저장합니다.'
-    : pending ? '제목·채널·설명·태그를 확인하고 있어요. 직접 선택한 보드는 유지합니다.'
-    : aiClassificationMessage || '저장할 때 자동 분류합니다. 확실한 주제만 보드에 담고, 애매하면 미분류로 남깁니다.';
+    : pending ? aiClassificationProgress || '최대 10개씩 제목·설명·태그를 확인하고 있어요. 직접 선택한 보드는 유지합니다.'
+    : aiClassificationMessage || '한 번에 최대 10개를 분류합니다. 애매하면 미분류로 남기고, 직접 선택한 보드는 유지합니다.';
+  $('classificationErrorDetails').hidden = !aiClassificationLastError || !!pending;
+  $('classificationErrorText').textContent = aiClassificationLastError?.details || '';
   const byId = new Map(savedVideos.map(video => [video.videoId, video]));
   document.querySelectorAll('.board-picker[data-board-video]').forEach(picker => {
     const video = byId.get(picker.dataset.boardVideo);
@@ -1700,8 +1708,9 @@ function refreshClassificationUI() {
   });
 }
 
-function queueVideoClassification(video) {
-  if (!getGeminiKey() || video.classificationSource === 'manual' || !isUnclassifiedVideo(video)) {
+function queueVideoClassification(video, { retry = false } = {}) {
+  if (!getGeminiKey() || (aiClassificationLastError && !retry)
+      || video.classificationSource === 'manual' || !isUnclassifiedVideo(video)) {
     refreshClassificationUI();
     return;
   }
@@ -1720,8 +1729,9 @@ function queueVideoClassification(video) {
 function queueUnclassifiedVideos(retry = false) {
   if (!getGeminiKey()) { refreshClassificationUI(); return; }
   const videos = savedVideos.filter(video => isUnclassifiedVideo(video)
-    && video.classificationSource !== 'manual' && (retry || !video.aiCheckedAt));
-  videos.forEach(queueVideoClassification);
+    && video.classificationSource !== 'manual' && (retry || !video.aiCheckedAt))
+    .sort((a, b) => (a.aiCheckedAt || 0) - (b.aiCheckedAt || 0)).slice(0, 10);
+  videos.forEach(video => queueVideoClassification(video, { retry }));
   refreshClassificationUI();
 }
 
@@ -1730,12 +1740,82 @@ function canApplyAIClassification(video, revision) {
     && (video.boardRevision || 0) === revision && isUnclassifiedVideo(video);
 }
 
-async function requestAIBoardAssignments(videos) {
+function redactClassificationError(value) {
+  let text = String(value || '');
+  const key = getGeminiKey();
+  if (key) text = text.split(key).join('[API 키 숨김]');
+  return text.replace(/AIza[A-Za-z0-9_-]+/g, '[API 키 숨김]')
+    .replace(/([?&]key=)[^&\s"']+/gi, '$1[숨김]').slice(0, 3000);
+}
+
+function classificationRequestError(kind, message, extra = {}) {
+  return Object.assign(new Error(redactClassificationError(message)), { kind, ...extra });
+}
+
+function classificationErrorReport(error) {
+  const code = error.httpStatus ? `HTTP ${error.httpStatus}` : {
+    timeout: 'TIMEOUT', network: 'NETWORK_ERROR', auth: 'API_KEY_ERROR',
+    invalidResponse: 'INVALID_RESPONSE', cancelled: 'CANCELLED',
+  }[error.kind] || error.name || 'UNKNOWN_ERROR';
+  let action;
+  if (error.kind === 'auth') action = 'Gemini API 키가 올바르지 않거나 만료됐습니다. API 키 설정에서 Gemini 키를 다시 등록하세요.';
+  else if (error.kind === 'permission') action = 'Gemini API 접근 권한이 거부됐습니다. AI Studio에서 해당 키의 프로젝트와 API 사용 권한을 확인하세요.';
+  else if (error.kind === 'billing') action = 'Gemini 프로젝트의 결제·잔액 제한으로 요청이 거절됐습니다. AI Studio의 사용량·결제 상태를 확인하세요.';
+  else if (error.kind === 'quota') action = error.zeroQuota
+    ? '이 모델에 허용된 사용 한도가 0입니다. 영상 수를 줄여도 해결되지 않으므로 AI Studio에서 프로젝트의 사용 가능 모델과 한도를 확인하세요.'
+    : `Gemini 요청·토큰·일일 사용량 한도에 걸렸습니다.${error.retryAfter ? ` 약 ${error.retryAfter}초 후 다시 시도하세요.` : ' AI Studio에서 사용량과 한도를 확인한 뒤 다시 시도하세요.'}`;
+  else if (error.kind === 'model') action = '현재 키로 분류 모델을 사용할 수 없습니다. AI Studio에서 키가 속한 프로젝트의 모델 접근 권한을 확인하세요.';
+  else if (error.kind === 'timeout') action = 'Gemini 응답 시간이 초과됐습니다. 잠시 후 다시 시도하세요.';
+  else if (error.kind === 'invalidResponse') action = 'Gemini 응답이 비어 있거나 JSON 형식이 끊겼습니다. 잠시 후 다시 시도하세요.';
+  else if (error.kind === 'size') action = '분류 요청의 입력 분량이 거절됐습니다. 영상 수를 줄여 다시 시도하세요.';
+  else if (error.kind === 'badRequest') action = 'Gemini가 요청 형식을 거절했습니다. 아래 오류 상세를 확인해 주세요.';
+  else if (error.kind === 'server') action = 'Gemini 서버 오류가 재시도 후에도 발생했습니다. 잠시 후 다시 시도하세요.';
+  else if (error.kind === 'network') action = 'Gemini 서버에 연결하지 못했습니다. 인터넷 연결·광고 차단·브라우저의 요청 차단 여부를 확인하세요.';
+  else if (error.kind === 'cancelled') action = 'API 키 변경 또는 요청 취소로 분류가 중단됐습니다. 키를 등록한 뒤 다시 시도하세요.';
+  else if (error.name === 'QuotaExceededError') action = '브라우저 저장 공간이 부족해 결과를 저장하지 못했습니다. 데이터를 백업한 뒤 저장 공간을 확보하세요.';
+  else action = '분류 중 오류가 발생했습니다. 아래 상세 내용으로 원인을 확인할 수 있습니다.';
+  return {
+    summary: `${code} · ${action} 완료되지 않은 영상은 미분류로 유지합니다.`,
+    details: redactClassificationError([
+      `오류: ${code}`, `모델: ${error.model || GEMINI_CLASSIFICATION_MODEL}`,
+      error.requestSize ? `요청 영상 수: ${error.requestSize}개${error.splitAttempted ? ' (분량을 줄여 재시도함)' : ''}` : '',
+      `시간: ${new Date().toLocaleString('ko-KR')}`, error.providerStatus ? `API 상태: ${error.providerStatus}` : '',
+      `상세: ${error.message || '응답 없음'}`, error.providerDetails || '',
+    ].filter(Boolean).join('\n')),
+  };
+}
+
+async function requestAIBoardAssignmentsWithRecovery(videos) {
+  const models = [GEMINI_CLASSIFICATION_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+  for (let index = 0; index < models.length; index++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await requestAIBoardAssignments(videos, models[index]);
+      } catch (error) {
+        if (error.kind === 'model' && index < models.length - 1) {
+          aiClassificationProgress = '이 키에서 사용 가능한 분류 모델을 확인하고 있어요.';
+          refreshClassificationUI();
+          break;
+        }
+        if (error.kind === 'server' && attempt === 0) {
+          aiClassificationProgress = 'Gemini 서버가 혼잡해 2초 뒤 한 번 더 요청합니다.';
+          refreshClassificationUI();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+}
+
+async function requestAIBoardAssignments(videos, model = GEMINI_CLASSIFICATION_MODEL) {
   const apiKey = getGeminiKey();
-  if (!apiKey) throw new Error('missing-key');
+  if (!apiKey) throw classificationRequestError('auth', 'Gemini API 키가 등록되지 않았습니다.', { model });
   const controller = new AbortController();
   aiClassificationAbort = controller;
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
   try {
     const policy = [
       '저장한 YouTube 영상을 주제별 보드에 보수적으로 분류하세요. 실제 영상을 보지 않았으므로 제공된 메타데이터만 근거로 삼으세요.',
@@ -1761,21 +1841,43 @@ async function requestAIBoardAssignments(videos) {
         description: String(details.description || video.description || '').slice(0, 1500),
         tags: (Array.isArray(details.tags) ? details.tags : []).slice(0, 20).map(tag => String(tag).slice(0, 80)) };
     });
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_CLASSIFICATION_MODEL}:generateContent`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: policy }] },
         contents: [{ parts: [{ text: JSON.stringify({ existingBoards: boards.map(board => board.name), videos: metadata }) }] }],
-        generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: 'LOW' },
+        generationConfig: { maxOutputTokens: 4096,
           responseMimeType: 'application/json', responseSchema: schema },
       }),
     });
-    if (!response.ok) throw new Error(`api-${response.status}`);
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('');
-    const result = JSON.parse(text);
-    if (!Array.isArray(result.assignments)) throw new Error('invalid-response');
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { data = null; }
+    if (!response.ok) {
+      const message = data?.error?.message || raw.slice(0, 500) || `HTTP ${response.status}`;
+      const details = Array.isArray(data?.error?.details) ? data.error.details : [];
+      const retry = details.find(detail => detail.retryDelay)?.retryDelay;
+      const retryAfter = Math.ceil(Number(response.headers.get('Retry-After') || String(retry || '').replace('s', '')) || 0);
+      const zeroQuota = /limit\s*[:=]\s*0\b|quotaValue["\s:]+0\b/i.test(message + JSON.stringify(details));
+      let kind = response.status === 401 ? 'auth' : response.status === 403 ? 'permission'
+        : response.status === 402 ? 'billing' : response.status === 404 ? 'model'
+        : response.status === 429 ? 'quota' : response.status >= 500 ? 'server' : 'badRequest';
+      if (response.status === 400 && /API_KEY_INVALID|API key not valid|invalid api.?key|expired/i.test(message + JSON.stringify(details))) kind = 'auth';
+      if (response.status === 413 || response.status === 400 && /too large|token.{0,30}(exceed|limit)|payload size|context length/i.test(message)) kind = 'size';
+      throw classificationRequestError(kind, message, { model, httpStatus: response.status,
+        providerStatus: data?.error?.status, providerDetails: redactClassificationError(JSON.stringify(details, null, 2)), retryAfter, zeroQuota });
+    }
+    const text = data?.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('');
+    let result;
+    try { result = JSON.parse(text); } catch {
+      throw classificationRequestError('invalidResponse', `JSON 응답이 비어 있거나 완성되지 않았습니다. 종료 사유: ${data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || '응답 없음'}`, { model });
+    }
+    if (!Array.isArray(result?.assignments)) throw classificationRequestError('invalidResponse', '응답에 분류 결과 목록(assignments)이 없습니다.', { model });
     return result.assignments;
+  } catch (error) {
+    if (error.kind) throw error;
+    if (error.name === 'AbortError') throw classificationRequestError(timedOut ? 'timeout' : 'cancelled', timedOut ? '30초 안에 응답을 받지 못했습니다.' : '요청이 취소됐습니다.', { model });
+    throw classificationRequestError('network', error.message || '네트워크 연결 실패', { model });
   } finally {
     clearTimeout(timeout);
     if (aiClassificationAbort === controller) aiClassificationAbort = null;
@@ -1787,15 +1889,38 @@ async function processAIClassificationQueue() {
   aiClassificationRunning = true;
   let assigned = 0;
   let uncertain = 0;
+  let batchSize = 10;
+  let splitUsed = false;
+  aiClassificationLastError = null;
+  aiClassificationProgress = '';
+  sessionStorage.removeItem('ytkw:classificationError');
   try {
     while (aiClassificationQueue.size) {
-      const jobs = [...aiClassificationQueue.entries()].slice(0, 10);
+      const jobs = [...aiClassificationQueue.entries()].slice(0, batchSize);
       jobs.forEach(([video]) => aiClassificationQueue.delete(video));
       const active = jobs.filter(([video, revision]) => canApplyAIClassification(video, revision));
       if (!active.length) continue;
       active.forEach(([video]) => aiClassificationActive.add(video));
       refreshClassificationUI();
-      const results = await requestAIBoardAssignments(active.map(([video]) => video));
+      let results;
+      try {
+        results = await requestAIBoardAssignmentsWithRecovery(active.map(([video]) => video));
+      } catch (error) {
+        if (!splitUsed && active.length > 1 && ['timeout', 'invalidResponse', 'size'].includes(error.kind)) {
+          splitUsed = true;
+          batchSize = Math.ceil(active.length / 2);
+          const remaining = [...aiClassificationQueue.entries()];
+          aiClassificationQueue.clear();
+          [...active, ...remaining].forEach(([video, revision]) => aiClassificationQueue.set(video, revision));
+          active.forEach(([video]) => aiClassificationActive.delete(video));
+          aiClassificationProgress = `응답이 완료되지 않아 ${active.length}개를 ${batchSize}개 이하로 나눠 다시 분류합니다.`;
+          refreshClassificationUI();
+          continue;
+        }
+        error.requestSize = active.length;
+        error.splitAttempted = splitUsed;
+        throw error;
+      }
       const byId = new Map();
       for (const result of results) {
         if (result && typeof result.videoId === 'string') {
@@ -1831,20 +1956,23 @@ async function processAIClassificationQueue() {
       persistSaved();
       if (searchMode === 'saved') renderSavedList();
     }
-    aiClassificationMessage = `${assigned}개 분류 완료 · ${uncertain}개 미분류. 직접 선택한 보드는 유지했습니다.`;
-  } catch (_) {
+    aiClassificationMessage = `${assigned}개 분류 완료 · ${uncertain}개 미분류. 남은 영상은 ‘AI 10개씩 분류’를 눌러 정리하세요.`;
+  } catch (error) {
     // 요청 실패나 응답 오류를 분류 결과로 가장하지 않고, 미분류 상태를 보존한다.
-    for (const video of [...aiClassificationActive, ...aiClassificationQueue.keys()]) {
+    for (const video of aiClassificationActive) {
       if (savedVideos.includes(video) && video.classificationSource !== 'manual' && isUnclassifiedVideo(video)) {
         video.aiCheckedAt = Date.now();
       }
     }
     aiClassificationQueue.clear();
-    aiClassificationMessage = 'AI 분류를 완료하지 못했습니다. 미분류로 유지했어요. Gemini API 키·사용량·인터넷 연결을 확인하고 다시 시도하세요.';
+    aiClassificationLastError = classificationErrorReport(error);
+    sessionStorage.setItem('ytkw:classificationError', JSON.stringify(aiClassificationLastError));
+    aiClassificationMessage = `${assigned ? `${assigned}개 분류 완료. ` : ''}${aiClassificationLastError.summary}`;
     persistSaved();
   } finally {
     aiClassificationActive.clear();
     aiClassificationRunning = false;
+    aiClassificationProgress = '';
     refreshClassificationUI();
   }
 }

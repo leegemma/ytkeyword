@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ytkeyword — YouTube 키워드 분석</title>
-  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="style.css?v=33" />
   <script>
     // 다크모드 깜빡임 방지 — 페이지 렌더 전에 테마 적용
     (function() {
@@ -331,9 +331,13 @@
     </nav>
     <nav id="savedBoardTabs" class="saved-board-tabs" aria-label="영상 보드"></nav>
     <div id="savedAiTools" class="saved-ai-tools">
-      <button id="classifySavedBtn" class="ghost-btn" type="button">✨ AI 자동 분류</button>
+      <button id="classifySavedBtn" class="ghost-btn" type="button">✨ AI 10개씩 분류</button>
       <button id="classificationKeyBtn" class="link-btn" type="button">Gemini API 키 등록</button>
       <p id="classificationStatus" role="status" aria-live="polite"></p>
+      <details id="classificationErrorDetails" class="classification-error-details" hidden open>
+        <summary>실패 원인 자세히 보기</summary>
+        <pre id="classificationErrorText"></pre>
+      </details>
     </div>
     <p class="hint" id="savedListHint"></p>
     <div id="savedListGrid"></div>
@@ -1026,6 +1030,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <div id="colTooltip" class="col-tooltip" hidden></div>
 
-  <script src="script.js?v=38"></script>
+  <script src="script.js?v=39"></script>
 </body>
 </html>
