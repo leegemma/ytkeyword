@@ -224,11 +224,12 @@ try {
 let savedListActiveTab = 'videos'; // 'videos' | 'channels'
 
 let savedBoardId = 'all';
-let boards = [
+const DEFAULT_BOARDS = [
   { id: 'beauty', name: '뷰티' },
   { id: 'fun', name: '재미' },
   { id: 'diet', name: '다이어트' },
 ];
+let boards = DEFAULT_BOARDS.map(board => ({ ...board }));
 try {
   const stored = JSON.parse(localStorage.getItem(LS_KEY_BOARDS) || 'null');
   if (Array.isArray(stored)) {
@@ -1944,11 +1945,13 @@ async function processAIClassificationQueue() {
           boards.push(board);
         }
         video.boardId = board?.id || null;
+        video.boardName = board?.name || null;
         video.classificationSource = 'ai';
         video.boardRevision = revision + 1;
         video.aiConfidence = confidence;
         video.aiReason = typeof result?.reason === 'string' ? result.reason.slice(0, 160) : '주제를 확정할 근거가 부족합니다.';
         video.aiCheckedAt = Date.now();
+        video.classificationUpdatedAt = video.aiCheckedAt;
         if (board) assigned++; else uncertain++;
       }
       active.forEach(([video]) => aiClassificationActive.delete(video));
@@ -2032,8 +2035,10 @@ function saveVideoToBoard(videoId, boardId) {
   const saved = savedVideos.find(v => v.videoId === videoId);
   if (!saved) return;
   saved.boardId = boardId === 'unfiled' ? null : boardId;
+  saved.boardName = boards.find(board => board.id === saved.boardId)?.name || null;
   saved.classificationSource = 'manual';
   saved.boardRevision = (saved.boardRevision || 0) + 1;
+  saved.classificationUpdatedAt = Date.now();
   persistSaved();
   const name = boards.find(b => b.id === boardId)?.name || '미분류';
   document.querySelectorAll(`.board-picker[data-board-video="${CSS.escape(videoId)}"]`).forEach(button => {
@@ -5059,28 +5064,9 @@ function decodeHtml(s) {
 }
 /* ───────── 데이터 백업/복원 ───────── */
 async function exportData() {
-  const data = {};
-  let count = 0;
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k || !k.startsWith('ytkw:')) continue;
-    // 캐시는 제외 (재생성 가능, 용량 큼)
-    if (k.startsWith('ytkw:summary:')) continue;
-    if (k.startsWith('ytkw:aspect:')) continue;
-    // 인증 정보는 제외
-    if (k === 'ytkw:githubPat') continue;
-    data[k] = localStorage.getItem(k);
-    count++;
-  }
-  const payload = {
-    _meta: {
-      app: 'ytkeyword',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      itemCount: count,
-    },
-    data,
-  };
+  let payload;
+  try { payload = buildBackupPayload({ excludeGithubToken: true }); }
+  catch (error) { showError(`백업 파일을 만들 수 없습니다.\n${error.message}`); return; }
   const stamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
   const filename = `ytkeyword-backup-${stamp}.json`;
   const json = JSON.stringify(payload, null, 2);
@@ -5095,7 +5081,7 @@ async function exportData() {
       const writable = await fh.createWritable();
       await writable.write(blob);
       await writable.close();
-      showToast(`💾 ${count}개 항목 백업됨`);
+      showToast(`💾 영상 ${payload._meta.savedVideoCount}개 · 보드 ${payload._meta.boardCount}개 · 분류 백업 완료`);
       return;
     } catch (e) {
       if (e.name === 'AbortError') return; // 사용자가 취소
@@ -5109,7 +5095,7 @@ async function exportData() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  showToast(`💾 ${count}개 항목 백업됨`);
+  showToast(`💾 영상 ${payload._meta.savedVideoCount}개 · 보드 ${payload._meta.boardCount}개 · 분류 백업 완료`);
 }
 
 function importData(file, mode) {
@@ -5117,11 +5103,12 @@ function importData(file, mode) {
   reader.onload = (e) => {
     try {
       const parsed = JSON.parse(e.target.result);
-      const data = (parsed && typeof parsed.data === 'object') ? parsed.data : parsed;
+      let data = (parsed && typeof parsed.data === 'object') ? parsed.data : parsed;
       if (typeof data !== 'object' || Array.isArray(data) || !data) {
         showError('잘못된 백업 파일 형식입니다.');
         return;
       }
+      data = normalizeClassificationBackup(data, mode === 'merge');
       const keys = Object.keys(data).filter(k => k.startsWith('ytkw:'));
       if (!keys.length) {
         showError('파일에서 ytkw 데이터를 찾을 수 없습니다.');
@@ -5133,6 +5120,7 @@ function importData(file, mode) {
       if (!confirm(
         `백업 파일 정보:\n` +
         `· 항목 수: ${keys.length}개\n` +
+        classificationBackupSummary(data) +
         `· 백업 시점: ${when}\n` +
         `· 복원 방식: ${modeLabel}\n\n` +
         `계속할까요?`
@@ -5158,17 +5146,26 @@ function importData(file, mode) {
 }
 
 /* ───────── GitHub Gist 동기화 ───────── */
-function buildBackupPayload() {
+function buildBackupPayload({ excludeGithubToken = false } = {}) {
   const data = {};
-  let count = 0;
   for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k || !k.startsWith('ytkw:')) continue;
-    if (k.startsWith('ytkw:summary:') || k.startsWith('ytkw:aspect:')) continue;
-    data[k] = localStorage.getItem(k);
-    count++;
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith('ytkw:')) continue;
+    if (key.startsWith('ytkw:summary:') || key.startsWith('ytkw:aspect:')) continue;
+    if (excludeGithubToken && key === LS_KEY_GITHUB_PAT) continue;
+    data[key] = localStorage.getItem(key);
   }
-  return { _meta: { app: 'ytkeyword', version: 1, exportedAt: new Date().toISOString(), itemCount: count }, data };
+  // 기본 보드는 아직 직접 저장한 적이 없어도 백업에 명시한다.
+  data[LS_KEY_BOARDS] ||= JSON.stringify(boards);
+  data[LS_KEY_SAVED_VIDEOS] ||= '[]';
+  const snapshot = normalizeClassificationBackup(data);
+  const saved = JSON.parse(snapshot[LS_KEY_SAVED_VIDEOS]);
+  const savedBoards = JSON.parse(snapshot[LS_KEY_BOARDS]);
+  const assigned = saved.filter(video => savedBoards.some(board => board.id === video.boardId)).length;
+  return { _meta: { app: 'ytkeyword', version: 2, exportedAt: new Date().toISOString(),
+    itemCount: Object.keys(snapshot).length, savedVideoCount: saved.length, boardCount: savedBoards.length,
+    classifiedVideoCount: assigned, unclassifiedVideoCount: saved.length - assigned,
+    includesVideoClassification: true }, data: snapshot };
 }
 
 async function saveToGist() {
@@ -5249,7 +5246,7 @@ async function loadFromGist() {
     if (!fileContent) throw new Error('백업 파일을 찾을 수 없습니다');
 
     const parsed = JSON.parse(fileContent);
-    const data = parsed.data || parsed;
+    const data = normalizeClassificationBackup(parsed.data || parsed);
     const keys = Object.keys(data).filter(k => k.startsWith('ytkw:'));
     if (!keys.length) throw new Error('유효한 데이터가 없습니다');
 
@@ -5275,11 +5272,93 @@ function parseMaybeJSON(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
+function normalizeClassificationBackup(input, merge = false) {
+  const data = { ...input };
+  const hasVideos = Object.hasOwn(data, LS_KEY_SAVED_VIDEOS);
+  const hasBoards = Object.hasOwn(data, LS_KEY_BOARDS);
+  if (!hasVideos && !hasBoards) return data;
+  const incomingVideos = hasVideos ? parseMaybeJSON(data[LS_KEY_SAVED_VIDEOS]) : [];
+  const incomingBoards = hasBoards ? parseMaybeJSON(data[LS_KEY_BOARDS]) : [];
+  if (!Array.isArray(incomingVideos) || incomingVideos.some(video => !video || typeof video.videoId !== 'string')) {
+    throw new Error('백업의 저장 영상 목록 형식이 올바르지 않습니다.');
+  }
+  if (!Array.isArray(incomingBoards) || incomingBoards.some(board => !board || typeof board.id !== 'string' || typeof board.name !== 'string' || !board.name.trim() || ['all', 'unfiled'].includes(board.id))) {
+    throw new Error('백업의 보드 목록 형식이 올바르지 않습니다.');
+  }
+  const currentBoards = parseMaybeJSON(localStorage.getItem(LS_KEY_BOARDS) || '[]');
+  const base = merge || !hasBoards ? [...boards, ...(Array.isArray(currentBoards) ? currentBoards : [])] : DEFAULT_BOARDS;
+  const combined = new Map(base.map(board => [board.id, { ...board }]));
+  const remap = new Map();
+  const nameKey = name => name.normalize('NFKC').trim().replace(/\s+/g, '').toLowerCase();
+  for (const board of incomingBoards) {
+    const sameName = merge && [...combined.values()].find(existing => nameKey(existing.name) === nameKey(board.name));
+    if (sameName) remap.set(board.id, sameName.id);
+    else if (!merge || !combined.has(board.id)) combined.set(board.id, { ...board });
+  }
+  const videos = incomingVideos.map(video => {
+    const restored = { ...video };
+    if (remap.has(restored.boardId)) restored.boardId = remap.get(restored.boardId);
+    // 보드 이름만 함께 남아 있는 이전 백업도 분류 연결을 복원한다.
+    if (restored.boardId && !combined.has(restored.boardId)
+        && typeof restored.boardName === 'string' && restored.boardName.trim()) {
+      const matching = [...combined.values()].find(board => nameKey(board.name) === nameKey(restored.boardName));
+      if (matching) restored.boardId = matching.id;
+      else if (!['all', 'unfiled'].includes(restored.boardId)) combined.set(restored.boardId, { id: restored.boardId, name: restored.boardName.trim() });
+    }
+    restored.boardName = combined.get(restored.boardId)?.name || null;
+    return restored;
+  });
+  data[LS_KEY_BOARDS] = JSON.stringify([...combined.values()]);
+  if (hasVideos) data[LS_KEY_SAVED_VIDEOS] = JSON.stringify(videos);
+  return data;
+}
+
+function classificationBackupSummary(data) {
+  const videos = parseMaybeJSON(data[LS_KEY_SAVED_VIDEOS]);
+  const savedBoards = parseMaybeJSON(data[LS_KEY_BOARDS]);
+  if (!Array.isArray(videos)) return '';
+  const classified = videos.filter(video => Array.isArray(savedBoards) && savedBoards.some(board => board.id === video.boardId)).length;
+  return `· 저장 영상: ${videos.length}개 (분류 ${classified}개 · 미분류 ${videos.length - classified}개)\n· 보드: ${Array.isArray(savedBoards) ? savedBoards.length : 0}개\n`;
+}
+
+function savedClassificationTime(video) {
+  return Number(video.classificationUpdatedAt) || Number(video.aiCheckedAt) || Number(video.savedAt) || 0;
+}
+
+function hasSavedClassification(video) {
+  return Object.hasOwn(video, 'boardId') || video.classificationSource === 'ai' || video.classificationSource === 'manual';
+}
+
+function mergeSavedVideos(incomingRaw) {
+  const incoming = parseMaybeJSON(incomingRaw);
+  if (!Array.isArray(incoming)) return;
+  const existing = parseMaybeJSON(localStorage.getItem(LS_KEY_SAVED_VIDEOS) || '[]');
+  const merged = new Map((Array.isArray(existing) ? existing : []).map(video => [video.videoId, video]));
+  const classificationFields = ['boardId', 'boardName', 'classificationSource', 'boardRevision',
+    'classificationUpdatedAt', 'aiConfidence', 'aiReason', 'aiCheckedAt'];
+  for (const video of incoming) {
+    const current = merged.get(video.videoId);
+    if (!current) { merged.set(video.videoId, video); continue; }
+    const result = (Number(video.savedAt) || 0) > (Number(current.savedAt) || 0) ? { ...current, ...video } : { ...video, ...current };
+    let classification = current;
+    if (hasSavedClassification(video) && (!hasSavedClassification(current)
+        || savedClassificationTime(video) > savedClassificationTime(current)
+        || savedClassificationTime(video) === savedClassificationTime(current)
+          && video.classificationSource === 'manual' && current.classificationSource !== 'manual')) classification = video;
+    classificationFields.forEach(field => {
+      delete result[field];
+      if (Object.hasOwn(classification, field)) result[field] = classification[field];
+    });
+    merged.set(video.videoId, result);
+  }
+  localStorage.setItem(LS_KEY_SAVED_VIDEOS, JSON.stringify([...merged.values()].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))));
+}
+
 function mergeImportedData(newData) {
-  // 보드 ID를 유지해야 저장한 영상의 분류도 함께 복원된다.
-  mergeArrayById(LS_KEY_BOARDS, newData[LS_KEY_BOARDS], 'id');
-  // 영상 저장 (videoId 기준 중복 제거, savedAt 더 최근 우선)
-  mergeArrayById('ytkw:savedVideos', newData['ytkw:savedVideos'], 'videoId', 'savedAt');
+  newData = normalizeClassificationBackup(newData, true);
+  if (newData[LS_KEY_BOARDS]) localStorage.setItem(LS_KEY_BOARDS, newData[LS_KEY_BOARDS]);
+  // 저장 날짜와 분류 수정 시점을 따로 비교해 최근 분류 선택을 보존한다.
+  mergeSavedVideos(newData[LS_KEY_SAVED_VIDEOS]);
   // 채널 저장 (channelId 기준)
   mergeArrayById('ytkw:savedChannels', newData['ytkw:savedChannels'], 'channelId', 'savedAt');
   // 즐겨찾기 키워드 (keyword 기준)
