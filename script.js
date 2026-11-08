@@ -13,6 +13,7 @@ const LS_KEY_BLOCKED_VIDEOS = 'ytkw:blockedVideos';
 const LS_KEY_BLOCKED_CHANNELS = 'ytkw:blockedChannels';
 const LS_KEY_FEATURES = 'ytkw:features';
 const LS_KEY_SAVED_VIDEOS = 'ytkw:savedVideos';
+const LS_KEY_BOARDS = 'ytkw:boards';
 const LS_KEY_SAVED_CHANNELS = 'ytkw:savedChannels';
 const LS_KEY_SAVED_KEYWORDS = 'ytkw:savedKeywords';
 const LS_KEY_ASPECT = 'ytkw:aspect:'; // prefix for video aspect cache
@@ -115,9 +116,8 @@ const blockListCount = $('blockListCount');
 const blockListModal = $('blockListModal');
 const featureBtn     = $('featureBtn');
 const featureModal   = $('featureModal');
-const savedListBtn   = $('savedListBtn');
 const savedListCount = $('savedListCount');
-const savedListModal = $('savedListModal');
+const savedSection   = $('savedSection');
 const historyBtn     = $('historyBtn');
 const historyBtnCount = $('historyBtnCount');
 const historyModal   = $('historyModal');
@@ -162,7 +162,8 @@ let currentRegion = localStorage.getItem(LS_KEY_REGION);
 if (currentRegion === null) currentRegion = 'KR'; // 기본
 if (!REGIONS.find(r => r.code === currentRegion)) currentRegion = 'KR';
 
-let searchMode = localStorage.getItem(LS_KEY_MODE) || 'video'; // 'video' | 'channel'
+let searchMode = localStorage.getItem(LS_KEY_MODE) || 'video';
+if (!['video', 'channel', 'keyword', 'idea', 'saved'].includes(searchMode)) searchMode = 'video';
 let allChannels = [];
 let displayChannels = [];
 let currentChannelSort = { key: 'growthSpeed', dir: 'desc' };
@@ -220,6 +221,32 @@ try {
 
 let savedListActiveTab = 'videos'; // 'videos' | 'channels'
 
+let savedBoardId = 'all';
+let boards = [
+  { id: 'beauty', name: '뷰티' },
+  { id: 'fun', name: '재미' },
+  { id: 'diet', name: '다이어트' },
+];
+try {
+  const stored = JSON.parse(localStorage.getItem(LS_KEY_BOARDS) || 'null');
+  if (Array.isArray(stored)) {
+    for (const board of stored) {
+      if (board && typeof board.id === 'string' && typeof board.name === 'string' && board.name.trim()
+          && !['all', 'unfiled'].includes(board.id) && !boards.some(b => b.id === board.id)) boards.push(board);
+    }
+  }
+} catch {}
+const modeViews = new Map();
+const modeCounts = { video: 0, channel: 0, keyword: 0, idea: 0, saved: 0 };
+const modeLoading = { video: false, channel: false, idea: false };
+const searchFields = [keywordInput, maxResultsEl, sortOrderEl, videoDurationEl, periodEl];
+const defaultSearchValues = searchFields.map(el => el.value);
+const defaultRegion = currentRegion;
+let modeScrollToken = 0;
+let boardMenuAnchor = null;
+let boardMenuVideoId = null;
+const ideaBoardVideos = new Map();
+
 function freshFilters() {
   return {
     viewMin: null, viewMax: null,
@@ -252,52 +279,94 @@ function init() {
 
 function applySearchMode() {
   document.body.classList.toggle('mode-channel', searchMode === 'channel');
+  document.body.classList.toggle('mode-saved', searchMode === 'saved');
   modeTabs.querySelectorAll('.mode-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.mode === searchMode);
+    t.setAttribute('aria-selected', String(t.dataset.mode === searchMode));
+    t.tabIndex = t.dataset.mode === searchMode ? 0 : -1;
   });
   const isKeywordMode = searchMode === 'keyword';
-  const isIdeaMode    = searchMode === 'idea';
-  const isUtilMode    = isKeywordMode || isIdeaMode;
-  if (searchMode === 'channel') {
-    keywordInput.placeholder = '채널 관련 키워드 입력';
-  } else if (isKeywordMode) {
-    keywordInput.placeholder = '분석할 키워드 입력 (예: 다이어트 레시피)';
-  } else if (isIdeaMode) {
-    keywordInput.placeholder = '아이디어를 찾을 주제 입력 (예: 요리, 운동, 부업)';
-  } else {
-    keywordInput.placeholder = '단어 또는 문장 입력';
-  }
+  const isIdeaMode = searchMode === 'idea';
+  const isSavedMode = searchMode === 'saved';
+  const isUtilMode = isKeywordMode || isIdeaMode || isSavedMode;
+  keywordInput.placeholder = searchMode === 'channel' ? '채널 관련 키워드 입력'
+    : isKeywordMode ? '분석할 키워드 입력 (예: 다이어트 레시피)'
+    : isIdeaMode ? '아이디어를 찾을 주제 입력 (예: 요리, 운동, 부업)'
+    : '단어 또는 문장 입력';
+  document.querySelector('.toolbar-left').hidden = isSavedMode;
+  exportCsvBtn.hidden = isSavedMode;
+  historyBtn.hidden = isSavedMode || !getHistoryForMode().length;
   filterBtn.hidden = isUtilMode;
   kwFavBtn.hidden = !isKeywordMode;
   document.querySelector('.settings-bar').hidden = isUtilMode;
   document.querySelector('main.results').hidden = isUtilMode;
   keywordSection.hidden = !isKeywordMode;
-  ideaSection.hidden    = !isIdeaMode;
+  ideaSection.hidden = !isIdeaMode;
+  savedSection.hidden = !isSavedMode;
+  resultCountEl.textContent = `${modeCounts[searchMode]}개`;
+  updateResultVisibility();
+}
+
+function updateResultVisibility() {
+  const video = searchMode === 'video';
+  const channel = searchMode === 'channel';
+  tableWrap.hidden = !video || viewMode !== 'table' || !displayResults.length;
+  cardGrid.hidden = !video || viewMode !== 'cards' || !displayResults.length;
+  channelsWrap.hidden = !channel || !displayChannels.length;
+  resultsControls.hidden = !video || !displayResults.length;
+  bulkActions.classList.toggle('hidden', !video || !selectedIds.size);
+  const hasResults = video ? displayResults.length : displayChannels.length;
+  emptyState.hidden = (!video && !channel) || !!hasResults || !!modeLoading[searchMode];
+  if (video) {
+    emptyState.querySelector('p').textContent = !hasSearched
+      ? '검색어를 입력하고 검색 버튼을 클릭하세요.'
+      : allResults.length ? '필터 조건에 맞는 결과가 없습니다. 필터를 조정해보세요.'
+      : '검색 결과가 없습니다. 다른 키워드를 시도하거나 검색 옵션을 바꿔보세요.';
+  } else if (channel) {
+    emptyState.querySelector('p').textContent = hasSearched
+      ? '채널 검색 결과가 없습니다. 키워드를 바꿔보세요.'
+      : '키워드로 채널을 검색하세요. 예) minimalism, 영어회화';
+  }
+  progressBar.classList.toggle('active', !!modeLoading[searchMode]);
+}
+
+function setModeCount(mode, count) {
+  modeCounts[mode] = count;
+  if (searchMode === mode) resultCountEl.textContent = `${count}개`;
+}
+
+function setModeLoading(mode, loading) {
+  modeLoading[mode] = loading;
+  updateResultVisibility();
 }
 
 function setSearchMode(mode) {
   if (mode === searchMode) return;
+  closeBoardMenu(false);
+  modeViews.set(searchMode, {
+    values: searchFields.map(el => el.value), region: currentRegion, hasSearched,
+    settingsVisible: !$('settingsSearchBtn').hidden,
+    dirty: $('settingsSearchBtn').classList.contains('dirty'),
+    scroll: window.scrollY,
+  });
+  const state = modeViews.get(mode);
+  searchFields.forEach((el, i) => { el.value = (state?.values || defaultSearchValues)[i]; });
+  currentRegion = state?.region ?? defaultRegion;
+  hasSearched = state?.hasSearched ?? false;
+  $('settingsSearchBtn').hidden = !state?.settingsVisible;
+  $('settingsSearchBtn').classList.toggle('dirty', !!state?.dirty);
   searchMode = mode;
   localStorage.setItem(LS_KEY_MODE, mode);
+  applyRegionFlag();
+  renderHistory();
+  if (mode === 'keyword') renderKwFavorites();
+  if (mode === 'saved') switchSavedTab(savedListActiveTab);
   applySearchMode();
-  renderHistory(); // 모드별 history 칩 갱신
-  if (mode === 'keyword') {
-    renderKwFavorites();
-    return;
-  }
-  if (mode === 'idea') return;
-  // 결과 영역 초기화
-  tableWrap.hidden = true;
-  cardGrid.hidden = true;
-  channelsWrap.hidden = true;
-  resultsControls.hidden = true;
-  bulkActions.classList.add('hidden');
-  emptyState.hidden = false;
-  emptyState.querySelector('p').textContent = mode === 'channel'
-    ? '키워드로 채널을 검색하세요. 예) minimalism, 영어회화'
-    : '검색어를 입력하고 검색 버튼을 클릭하세요.';
-  hasSearched = false;
-  resultCountEl.textContent = '0개';
+  window.scrollTo({ top: state?.scroll || 0, behavior: 'instant' });
+  const token = ++modeScrollToken;
+  requestAnimationFrame(() => {
+    if (token === modeScrollToken) window.scrollTo({ top: state?.scroll || 0, behavior: 'instant' });
+  });
 }
 
 function applyRegionFlag() {
@@ -319,6 +388,28 @@ function applyViewModeButtonState() {
 }
 
 function bindEvents() {
+  bindModalAccessibility();
+  bindBoardEvents();
+  modeTabs.addEventListener('keydown', e => {
+    const tabs = [...modeTabs.querySelectorAll('.mode-tab')];
+    const index = tabs.indexOf(document.activeElement);
+    if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+      : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].click();
+    tabs[next].focus();
+  });
+  const unitInfo = document.querySelector('.idea-unit-info-btn');
+  unitInfo.addEventListener('click', () => {
+    unitInfo.setAttribute('aria-expanded', String(unitInfo.getAttribute('aria-expanded') !== 'true'));
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') unitInfo.setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.idea-unit-note')) unitInfo.setAttribute('aria-expanded', 'false');
+  });
   searchBtn.addEventListener('click', onSearch);
   keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onSearch(); });
   kwTableBody.addEventListener('click', (e) => {
@@ -360,12 +451,6 @@ function bindEvents() {
     colTooltip.hidden = true;
   });
 
-  // 사용자가 OS 테마를 바꾸면 (저장된 선택 없을 때만) 자동 반영
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (!localStorage.getItem(LS_KEY_THEME)) {
-      document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
-    }
-  });
   apiKeySaveBtn.addEventListener('click', saveApiKey);
   apiKeyClearBtn.addEventListener('click', clearApiKey);
   $('gistSaveBtn').addEventListener('click', saveToGist);
@@ -422,10 +507,9 @@ function bindEvents() {
   });
 
   // 저장한 영상/채널
-  savedListBtn.addEventListener('click', () => openSavedListModal());
   $('clearAllSavedBtn').addEventListener('click', clearAllSaved);
   // 저장 모달 탭 (영상/채널)
-  savedListModal.querySelectorAll('.detail-tab[data-savedtab]').forEach(b => {
+  savedSection.querySelectorAll('.detail-tab[data-savedtab]').forEach(b => {
     b.addEventListener('click', () => switchSavedTab(b.dataset.savedtab));
   });
   // 데이터 백업 / 복원
@@ -460,7 +544,7 @@ function bindEvents() {
   });
 
   // mini 카드 저장 버튼 (모든 모달 내 미니 그리드)
-  [detailModal, channelDetailModal, savedListModal].forEach(modal => {
+  [detailModal, channelDetailModal, savedSection].forEach(modal => {
     if (!modal) return;
     modal.addEventListener('click', (e) => {
       const btn = e.target.closest('.mini-save-btn[data-mini-save]');
@@ -474,8 +558,8 @@ function bindEvents() {
   });
 
   // 저장 영상 카드 클릭 → 영상 상세 모달
-  savedListModal.addEventListener('click', (e) => {
-    if (e.target.closest('.mini-save-btn, .card-save-btn, [data-saved-channel-remove]')) return;
+  savedSection.addEventListener('click', (e) => {
+    if (e.target.closest('.mini-save-btn, .card-save-btn, .board-picker, [data-saved-channel-remove]')) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
     const card = e.target.closest('.result-card[data-mini-id]');
     if (!card) return;
@@ -832,7 +916,7 @@ function setViewMode(mode) {
 /* ───────── 영상 디테일 모달 ───────── */
 function handleResultClick(e) {
   // 액션 버튼/체크박스 클릭은 무시
-  if (e.target.closest('.summary-btn, .save-btn, .card-save-btn, input[type="checkbox"]')) return;
+  if (e.target.closest('.summary-btn, .save-btn, .card-save-btn, .board-picker, input[type="checkbox"]')) return;
   const trigger = e.target.closest('[data-detail-id]');
   if (!trigger) return;
   if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
@@ -872,6 +956,10 @@ function openVideoDetail(result) {
   $('popularGrid').innerHTML = '<p class="loading-text">탭을 누르면 로딩됩니다 (API quota 100 units 사용)</p>';
   switchDetailTab('video');
   detailModal.classList.remove('hidden');
+  // 이전 영상에서 내려 본 위치를 남기지 않고 제목·썸네일부터 표시한다.
+  const body = detailModal.querySelector('.detail-body');
+  body.scrollTop = 0;
+  body.scrollLeft = 0;
 }
 
 async function openSavedVideoDetail(saved) {
@@ -1007,9 +1095,9 @@ function populateChannelTab(r) {
 }
 
 function switchDetailTab(tab) {
-  document.querySelectorAll('.detail-tab').forEach(t =>
+  detailModal.querySelectorAll('.detail-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
-  document.querySelectorAll('.detail-pane').forEach(p =>
+  detailModal.querySelectorAll('.detail-pane').forEach(p =>
     p.classList.toggle('hidden', p.dataset.pane !== tab));
   if (tab === 'channel' && currentDetail) {
     if (!currentDetail.recent) loadChannelRecent();
@@ -1403,7 +1491,7 @@ function handleCheckboxChange(e) {
 
 function updateBulkActions() {
   const n = selectedIds.size;
-  if (n > 0) {
+  if (n > 0 && searchMode === 'video') {
     bulkActions.classList.remove('hidden');
     selectedCount.textContent = n;
   } else {
@@ -1553,6 +1641,130 @@ function setFeature(key, enabled) {
 }
 
 /* ───────── 저장한 영상 ───────── */
+function boardPickerHtml(videoId, extraClass = '') {
+  const saved = savedVideos.find(v => v.videoId === videoId);
+  const name = saved ? boards.find(b => b.id === saved.boardId)?.name || '미분류' : '보드 선택';
+  return `<button type="button" class="board-picker ${extraClass}" data-board-video="${escapeHtml(videoId)}" aria-haspopup="dialog" aria-expanded="false" title="${escapeHtml(name)} · 저장 보드 선택">${escapeHtml(name)} ▾</button>`;
+}
+
+function closeBoardMenu(restoreFocus = true) {
+  const menu = $('boardMenu');
+  if (menu.hidden) return;
+  menu.hidden = true;
+  boardMenuAnchor?.setAttribute('aria-expanded', 'false');
+  const anchor = boardMenuAnchor;
+  boardMenuAnchor = null;
+  boardMenuVideoId = null;
+  document.body.appendChild(menu);
+  if (restoreFocus) {
+    const target = anchor?.isConnected ? anchor : savedSection.querySelector('.saved-board-tab.active');
+    target?.focus({ preventScroll: true });
+  }
+}
+
+function openBoardMenu(anchor, videoId = null) {
+  closeBoardMenu(false);
+  const menu = $('boardMenu');
+  boardMenuAnchor = anchor;
+  boardMenuVideoId = videoId;
+  anchor.setAttribute('aria-expanded', 'true');
+  const current = savedVideos.find(v => v.videoId === videoId)?.boardId;
+  $('boardMenuList').hidden = !videoId;
+  $('boardMenuList').innerHTML = [...boards, { id: 'unfiled', name: '미분류' }].map(board =>
+    `<button type="button" data-save-board="${escapeHtml(board.id)}" aria-pressed="${(current || 'unfiled') === board.id}"><span>${escapeHtml(board.name)}</span><span aria-hidden="true">${(current || 'unfiled') === board.id && savedVideoIds.has(videoId) ? '✓' : '+'}</span></button>`
+  ).join('');
+  $('boardNameInput').value = '';
+  $('boardCreateError').hidden = true;
+  (anchor.closest('.modal') || document.body).appendChild(menu);
+  menu.inert = false;
+  menu.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8));
+  const top = rect.bottom + 6 + menu.offsetHeight <= innerHeight - 8
+    ? rect.bottom + 6 : Math.max(8, rect.top - menu.offsetHeight - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  (videoId ? menu.querySelector('[data-save-board]') : $('boardNameInput')).focus({ preventScroll: true });
+}
+
+function saveVideoToBoard(videoId, boardId) {
+  if (!savedVideoIds.has(videoId)) {
+    const video = allResults.find(v => v.videoId === videoId) || ideaBoardVideos.get(videoId) || findMiniVideoInfo(videoId);
+    if (!video) { showToast('영상 정보를 찾을 수 없습니다. 다시 검색해 주세요.'); return; }
+    toggleSave(videoId, video);
+  }
+  const saved = savedVideos.find(v => v.videoId === videoId);
+  if (!saved) return;
+  saved.boardId = boardId === 'unfiled' ? null : boardId;
+  persistSaved();
+  const name = boards.find(b => b.id === boardId)?.name || '미분류';
+  document.querySelectorAll(`.board-picker[data-board-video="${CSS.escape(videoId)}"]`).forEach(button => {
+    button.textContent = `${name} ▾`;
+    button.title = `${name} · 저장 보드 선택`;
+  });
+  if (searchMode === 'saved') switchSavedTab(savedListActiveTab);
+  showToast(`“${name}”에 저장했어요`);
+}
+
+function bindBoardEvents() {
+  document.addEventListener('click', e => {
+    const picker = e.target.closest('.board-picker');
+    if (picker) {
+      e.preventDefault();
+      const wasOpen = boardMenuAnchor === picker && !$('boardMenu').hidden;
+      if (wasOpen) closeBoardMenu();
+      else openBoardMenu(picker, picker.dataset.boardVideo);
+      return;
+    }
+    if (e.target.closest('.saved-board-add')) {
+      openBoardMenu(e.target.closest('button'));
+      return;
+    }
+    const filter = e.target.closest('[data-board-filter]');
+    if (filter) {
+      savedBoardId = filter.dataset.boardFilter;
+      renderSavedList();
+      savedSection.querySelector(`[data-board-filter="${CSS.escape(savedBoardId)}"]`)?.focus({ preventScroll: true });
+    }
+    if (!e.target.closest('#boardMenu')) closeBoardMenu(false);
+  });
+  $('boardMenu').addEventListener('click', e => {
+    const choice = e.target.closest('[data-save-board]');
+    if (choice && boardMenuVideoId) {
+      saveVideoToBoard(boardMenuVideoId, choice.dataset.saveBoard);
+      closeBoardMenu();
+    } else if (e.target.closest('.board-menu-close')) closeBoardMenu();
+  });
+  $('boardCreateForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('boardNameInput').value.trim();
+    const error = $('boardCreateError');
+    if (!name || boards.some(b => b.name === name)) {
+      error.textContent = name ? '같은 이름의 보드가 있습니다. 기존 보드를 선택하거나 다른 이름을 입력하세요.' : '보드 이름을 입력하세요.';
+      error.hidden = false;
+      $('boardNameInput').focus();
+      return;
+    }
+    const board = { id: `board-${crypto.randomUUID()}`, name };
+    boards.push(board);
+    localStorage.setItem(LS_KEY_BOARDS, JSON.stringify(boards));
+    if (boardMenuVideoId) saveVideoToBoard(boardMenuVideoId, board.id);
+    else {
+      savedBoardId = board.id;
+      switchSavedTab('videos');
+      showToast(`“${name}” 보드를 만들었어요`);
+    }
+    closeBoardMenu();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('boardMenu').hidden) { e.preventDefault(); closeBoardMenu(); }
+  });
+  window.addEventListener('resize', () => closeBoardMenu(false));
+  window.addEventListener('scroll', e => {
+    if (!$('boardMenu').contains(e.target)) closeBoardMenu(false);
+  }, true);
+}
+
 function persistSaved() {
   localStorage.setItem(LS_KEY_SAVED_VIDEOS, JSON.stringify(savedVideos));
 }
@@ -1570,7 +1782,6 @@ function toggleSave(videoId, fallbackInfo) {
     updateSaveButtons(videoId, false);
     showToast('⭐ 저장 해제됨');
     // 만약 저장 목록 모달이 열려있으면 다시 그려줌
-    if (!savedListModal.classList.contains('hidden')) renderSavedList();
   } else {
     // 저장
     if (!fromResults) {
@@ -1595,7 +1806,7 @@ function toggleSave(videoId, fallbackInfo) {
     persistSaved();
     updateSavedListButton();
     updateSaveButtons(videoId, true);
-    showToast('⭐ 저장됨 — 우상단에서 다시 볼 수 있어요');
+    showToast('⭐ 저장됨 — 저장 탭에서 다시 볼 수 있어요');
   }
 }
 
@@ -1648,43 +1859,64 @@ function updateSaveButtons(videoId, isSaved) {
       }
     }
   }
-}
+  const entry = savedVideos.find(v => v.videoId === videoId);
+  const boardName = isSaved ? boards.find(b => b.id === entry?.boardId)?.name || '미분류' : '보드 선택';
+  document.querySelectorAll(`.board-picker[data-board-video="${CSS.escape(videoId)}"]`).forEach(button => {
+    button.textContent = `${boardName} ▾`;
+    button.title = `${boardName} · 저장 보드 선택`;
+  });
 
-function openSavedListModal(tab) {
-  if (tab) savedListActiveTab = tab;
-  switchSavedTab(savedListActiveTab);
-  savedListModal.classList.remove('hidden');
 }
 
 function switchSavedTab(tab) {
   savedListActiveTab = tab;
-  savedListModal.querySelectorAll('.detail-tab[data-savedtab]').forEach(b =>
-    b.classList.toggle('active', b.dataset.savedtab === tab));
+  savedSection.querySelectorAll('[data-savedtab]').forEach(b => {
+    b.classList.toggle('active', b.dataset.savedtab === tab);
+    b.setAttribute('aria-pressed', String(b.dataset.savedtab === tab));
+  });
   $('savedVideosCount').textContent = savedVideos.length;
   $('savedChannelsCount').textContent = savedChannels.length;
+  $('savedBoardTabs').hidden = tab !== 'videos';
+  const clear = $('clearAllSavedBtn');
+  clear.textContent = tab === 'channels' ? '저장한 채널 전체 삭제' : '저장한 영상 전체 삭제';
+  clear.disabled = !(tab === 'channels' ? savedChannels.length : savedVideos.length);
   renderSavedList();
+}
+
+function renderSavedBoardTabs() {
+  const choices = [{ id: 'all', name: '전체' }, ...boards, { id: 'unfiled', name: '미분류' }];
+  $('savedBoardTabs').innerHTML = choices.map(board => {
+    const count = savedVideos.filter(v => board.id === 'all' || (board.id === 'unfiled' ? !boards.some(b => b.id === v.boardId) : v.boardId === board.id)).length;
+    return `<button type="button" class="saved-board-tab${savedBoardId === board.id ? ' active' : ''}" data-board-filter="${escapeHtml(board.id)}" aria-pressed="${savedBoardId === board.id}">${escapeHtml(board.name)} <span>${count}</span></button>`;
+  }).join('') + '<button type="button" class="saved-board-add">+ 보드 만들기</button>';
 }
 
 function renderSavedList() {
   const grid = $('savedListGrid');
   const hint = $('savedListHint');
+  renderSavedBoardTabs();
+  $('savedVideosCount').textContent = savedVideos.length;
+  $('savedChannelsCount').textContent = savedChannels.length;
+  const visibleVideos = savedVideos.filter(v => savedBoardId === 'all' || (savedBoardId === 'unfiled' ? !boards.some(b => b.id === v.boardId) : v.boardId === savedBoardId));
+  setModeCount('saved', savedListActiveTab === 'channels' ? savedChannels.length : visibleVideos.length);
+  $('clearAllSavedBtn').disabled = !(savedListActiveTab === 'channels' ? savedChannels.length : savedVideos.length);
   if (savedListActiveTab === 'channels') {
     hint.textContent = savedChannels.length
-      ? `저장한 채널 ${savedChannels.length}개 — 카드 클릭 시 YouTube로 이동`
+      ? `저장한 채널 ${savedChannels.length}개 — 카드를 선택하면 채널 상세 보기`
       : '저장한 채널이 없습니다. 채널 찾기 → 채널 상세 → ☆ 버튼으로 저장하세요.';
     if (!savedChannels.length) { grid.innerHTML = ''; return; }
     grid.innerHTML = savedChannels.map(c => {
       const countryRegion = REGIONS.find(r => r.code === c.country);
       const flag = countryRegion ? countryRegion.flag : '';
       return `
-        <a class="saved-channel-card" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" data-saved-channel-detail="${escapeHtml(c.channelId)}" style="margin-bottom:8px" title="클릭하면 채널 상세 (Cmd+클릭은 YouTube)">
+        <article class="saved-channel-card"><a class="saved-channel-open" href="https://www.youtube.com/channel/${escapeHtml(c.channelId)}" target="_blank" rel="noopener" data-saved-channel-detail="${escapeHtml(c.channelId)}" style="margin-bottom:8px" title="클릭하면 채널 상세 (Cmd+클릭은 YouTube)">
           <img class="channel-avatar" src="${c.thumbnail || ''}" alt="" loading="lazy" />
           <div class="saved-channel-info">
             <div class="saved-channel-name">${flag ? flag + ' ' : ''}${escapeHtml(c.name)}</div>
             <div class="saved-channel-meta">구독자 ${fmtCompact(c.subscribers || 0)} · 영상 ${fmtCompact(c.videoCount || 0)}개</div>
           </div>
-          <button class="card-save-btn saved" data-saved-channel-remove="${escapeHtml(c.channelId)}" type="button" title="저장 해제">★</button>
-        </a>
+          </a><button class="card-save-btn saved" data-saved-channel-remove="${escapeHtml(c.channelId)}" type="button" title="저장 해제">★</button>
+        </article>
       `;
     }).join('');
     // 별 클릭 → 저장 해제
@@ -1706,31 +1938,13 @@ function renderSavedList() {
     });
     return;
   }
-  // 영상 탭
-  hint.textContent = savedVideos.length
-    ? `저장한 영상 ${savedVideos.length}개 — 카드 클릭 시 YouTube, ★로 저장 해제`
-    : '저장한 영상이 없습니다. 검색 결과의 ☆ 버튼을 눌러 저장하세요.';
-  if (!savedVideos.length) { grid.innerHTML = ''; return; }
-  // mini-grid 패턴 (가로/세로 분리)
-  renderMiniGrid(grid, savedVideos.map(v => ({ ...v, isShorts: v.isPortrait ?? v.isShorts, isPortrait: v.isPortrait ?? v.isShorts })));
-  // 저장 해제 버튼 추가 (각 카드 위)
-  const savedByVideoId = new Map(savedVideos.map(v => [v.videoId, v]));
-  grid.querySelectorAll('.result-card[data-mini-id]').forEach((card) => {
-    const v = savedByVideoId.get(card.dataset.miniId);
-    if (!v) return;
-    const btn = document.createElement('button');
-    btn.className = 'card-save-btn saved';
-    btn.textContent = '★';
-    btn.title = '저장 해제';
-    btn.style.cssText = 'position:absolute; top:6px; right:6px; z-index:2';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleSave(v.videoId);
-    });
-    card.style.position = 'relative';
-    card.appendChild(btn);
-  });
+  const boardName = savedBoardId === 'all' ? '전체' : savedBoardId === 'unfiled' ? '미분류' : boards.find(b => b.id === savedBoardId)?.name || '전체';
+  hint.textContent = visibleVideos.length
+    ? `${boardName} · 영상 ${visibleVideos.length}개 — 카드를 선택하면 상세 보기, 보드 선택으로 분류 변경`
+    : savedBoardId === 'all' ? '저장한 영상이 없습니다. 영상 찾기에서 보드를 선택하거나 ☆를 눌러 저장하세요.'
+    : `“${boardName}” 보드에 영상이 없습니다. 영상 카드에서 보드를 선택해 담아보세요.`;
+  if (!visibleVideos.length) { grid.innerHTML = ''; return; }
+  renderMiniGrid(grid, visibleVideos.map(v => ({ ...v, isShorts: v.isPortrait ?? v.isShorts, isPortrait: v.isPortrait ?? v.isShorts })));
 }
 
 function clearAllSaved() {
@@ -1743,7 +1957,7 @@ function clearAllSaved() {
     persistSavedChannels();
     updateSavedListButton();
     ids.forEach(id => updateSaveChannelButtons(id, false));
-    savedListModal.classList.add('hidden');
+    switchSavedTab(savedListActiveTab);
     showToast('🗑 저장 채널 목록 비움');
   } else {
     if (!savedVideos.length) return;
@@ -1754,7 +1968,7 @@ function clearAllSaved() {
     persistSaved();
     updateSavedListButton();
     ids.forEach(id => updateSaveButtons(id, false));
-    savedListModal.classList.add('hidden');
+    switchSavedTab(savedListActiveTab);
     showToast('🗑 저장 영상 목록 비움');
   }
 }
@@ -1777,7 +1991,6 @@ function toggleSaveChannel(channelId) {
     updateSavedListButton();
     updateSaveChannelButtons(channelId, false);
     showToast('⭐ 채널 저장 해제됨');
-    if (!savedListModal.classList.contains('hidden')) renderSavedList();
   } else {
     if (!channel) {
       showToast('저장할 채널 정보를 찾을 수 없습니다');
@@ -1834,13 +2047,8 @@ function updateSaveChannelButtons(channelId, isSaved) {
 }
 
 function updateSavedListButton() {
-  const total = savedVideoIds.size + savedChannelIds.size;
-  if (total > 0) {
-    savedListBtn.hidden = false;
-    savedListCount.textContent = total;
-  } else {
-    savedListBtn.hidden = true;
-  }
+  savedListCount.textContent = savedVideoIds.size + savedChannelIds.size;
+  if (searchMode === 'saved') switchSavedTab(savedListActiveTab);
 }
 
 function positionColTooltip(e, el) {
@@ -1858,7 +2066,10 @@ function positionColTooltip(e, el) {
 function toggleTheme() {
   const current = document.documentElement.dataset.theme;
   const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.classList.add('theme-switching');
   document.documentElement.dataset.theme = next;
+  void document.documentElement.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('theme-switching')));
   localStorage.setItem(LS_KEY_THEME, next);
   showToast(next === 'dark' ? '🌙 다크 모드' : '☀️ 라이트 모드');
 }
@@ -1930,7 +2141,68 @@ function openApiKeyModal() {
   $('githubPatInput').value = localStorage.getItem(LS_KEY_GITHUB_PAT) || '';
   updateGistStatus();
   apiKeyModal.classList.remove('hidden');
-  setTimeout(() => apiKeyInput.focus(), 50);
+}
+
+function bindModalAccessibility() {
+  const modals = [...document.querySelectorAll('.modal')];
+  const stack = [];
+  const previousInert = new Map();
+  const focusable = modal => [...modal.querySelectorAll('button, input, a[href], select, textarea, [tabindex]')]
+    .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+  const observer = new MutationObserver(records => {
+    const previousTop = stack[stack.length - 1];
+    for (const { target: modal } of records) {
+      const index = stack.findIndex(entry => entry.modal === modal);
+      if (!modal.classList.contains('hidden') && index < 0) {
+        stack.push({ modal, opener: document.activeElement });
+      } else if (modal.classList.contains('hidden') && index >= 0) {
+        stack.splice(index, 1);
+      }
+    }
+    const top = stack[stack.length - 1];
+    document.body.classList.toggle('modal-open', !!top);
+    for (const child of document.body.children) {
+      if (top) {
+        if (!previousInert.has(child)) previousInert.set(child, child.inert);
+        child.inert = child !== top.modal;
+      } else if (previousInert.has(child)) {
+        child.inert = previousInert.get(child);
+      }
+    }
+    if (!top) previousInert.clear();
+    if (top !== previousTop) {
+      const opener = previousTop?.opener;
+      if (opener?.isConnected && !opener.closest('[inert], .modal.hidden')) opener.focus();
+      if (top && !top.modal.contains(document.activeElement)) {
+        (top.modal.querySelector('input:not([type="file"])') || focusable(top.modal)[0] || top.modal).focus();
+      }
+    }
+  });
+  modals.forEach(modal => {
+    modal.tabIndex = -1;
+    const title = modal.querySelector('h2');
+    if (title) {
+      title.id ||= `${modal.id}Title`;
+      modal.setAttribute('aria-labelledby', title.id);
+    }
+    observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+  });
+  document.addEventListener('keydown', e => {
+    const top = stack[stack.length - 1]?.modal;
+    if (!top) return;
+    if (e.key === 'Escape' && !$('boardMenu').hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      top.classList.add('hidden');
+    } else if (e.key === 'Tab') {
+      const items = focusable(top);
+      const edge = e.shiftKey ? items[0] : items[items.length - 1];
+      if (!items.length || document.activeElement === edge || document.activeElement === top) {
+        e.preventDefault();
+        (e.shiftKey ? items[items.length - 1] : items[0])?.focus();
+      }
+    }
+  });
 }
 
 function saveApiKey() {
@@ -1947,6 +2219,7 @@ function saveApiKey() {
 }
 
 function clearApiKey() {
+  if (!confirm('저장된 YouTube·Gemini API 키와 GitHub 토큰을 모두 삭제할까요? 삭제 후에는 다시 입력해야 합니다.')) return;
   localStorage.removeItem(LS_KEY_API);
   localStorage.removeItem(LS_KEY_GEMINI);
   localStorage.removeItem(LS_KEY_GITHUB_PAT);
@@ -1979,10 +2252,11 @@ async function onSearch() {
   if (searchMode === 'keyword') return onKeywordAnalysisSearch();
   if (searchMode === 'idea')    return onIdeaSearch(q, apiKey);
 
+  const searchRegion = currentRegion;
   hasSearched = true;
   $('settingsSearchBtn').hidden = false;
   clearSettingsDirty();
-  progressBar.classList.add('active');
+  setModeLoading('video', true);
   emptyState.hidden = true;
   tableWrap.hidden = true;
   channelsWrap.hidden = true;
@@ -2009,7 +2283,7 @@ async function onSearch() {
       displayResults = [];
       renderResults();
       showToast('결과 없음');
-      progressBar.classList.remove('active');
+      setModeLoading('video', false);
       return;
     }
     const videoIds = videos.map(v => v.id.videoId);
@@ -2023,7 +2297,7 @@ async function onSearch() {
     const detailMap = mapBy(videoStats, 'id');
     const channelMap = mapBy(channelStats, 'id');
 
-    const regionLangFilter = currentRegion ? REGION_LANG[currentRegion] : null;
+    const regionLangFilter = searchRegion ? REGION_LANG[searchRegion] : null;
     allResults = videos.filter(v => {
       // 차단된 영상/채널 제외
       const vid = v.id?.videoId;
@@ -2102,7 +2376,7 @@ async function onSearch() {
     });
 
     // 검색 기록 저장
-    pushHistory(q);
+    pushHistory(q, 'video');
 
     // 정렬 + 표시
     displayResults = [...allResults];
@@ -2116,7 +2390,7 @@ async function onSearch() {
     console.error(err);
     showError(`영상 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
   } finally {
-    progressBar.classList.remove('active');
+    setModeLoading('video', false);
   }
 }
 
@@ -2305,7 +2579,7 @@ function drawGrowthChart(viewCount, ageDays, rangeDays, publishedAt) {
 /* ───────── 채널 검색 ───────── */
 async function onSearchChannels(q, apiKey) {
   hasSearched = true;
-  progressBar.classList.add('active');
+  setModeLoading('channel', true);
   emptyState.hidden = true;
   tableWrap.hidden = true;
   cardGrid.hidden = true;
@@ -2389,7 +2663,7 @@ async function onSearchChannels(q, apiKey) {
       };
     });
 
-    pushHistory(q);
+    pushHistory(q, 'channel');
     displayChannels = [...allChannels];
     sortChannels();
     renderChannelResults();
@@ -2403,7 +2677,7 @@ async function onSearchChannels(q, apiKey) {
     console.error(err);
     showError(`채널 검색 중 오류가 발생했습니다.\n\n${err.message}`, err.stack);
   } finally {
-    progressBar.classList.remove('active');
+    setModeLoading('channel', false);
   }
 }
 
@@ -2459,17 +2733,9 @@ function sortChannels() {
 }
 
 function renderChannelResults() {
-  resultCountEl.textContent = `${displayChannels.length}개`;
-  if (!displayChannels.length) {
-    channelsWrap.hidden = true;
-    emptyState.hidden = false;
-    const p = emptyState.querySelector('p');
-    p.textContent = '채널 검색 결과가 없습니다. 키워드를 바꿔보세요.';
-    return;
-  }
-  emptyState.hidden = true;
-  channelsWrap.hidden = false;
-  renderChannelsTable();
+  setModeCount('channel', displayChannels.length);
+  if (displayChannels.length) renderChannelsTable();
+  updateResultVisibility();
 }
 
 function renderChannelsTable() {
@@ -2594,7 +2860,6 @@ async function openChannelDetailById(channelId) {
       growthSpeed,
       growthTier: rateTier(growthSpeed, [100, 1000, 10000, 100000]),
     };
-    savedListModal.classList.add('hidden'); // 저장 목록 모달 닫기
     openChannelDetail(channel);
   } catch (err) {
     showError(`채널 정보 로딩 실패:\n${err.message}`, err.stack);
@@ -3219,6 +3484,7 @@ function miniCardHtml(it, isPortrait) {
         ${vph != null ? `<span class="mini-vph-chip vph-tier-${vphTier(vph)}">${fmtVPHShort(vph)} VPH</span>` : ''}
         ${it.duration ? `<span class="duration-overlay">${it.duration}</span>` : ''}
       </a>
+      ${boardPickerHtml(it.videoId)}
       <button class="mini-save-btn ${isSaved ? 'saved' : ''}" data-mini-save="${escapeHtml(it.videoId)}" type="button" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
       <div class="card-info">
         <h3 class="card-title">${escapeHtml(it.title)}</h3>
@@ -3370,19 +3636,22 @@ function extractIdeaKeywords(videos, limit = 8) {
 }
 
 async function onIdeaSearch(q, apiKey) {
-  pushHistory(q);
+  const searchRegion = currentRegion;
+  pushHistory(q, 'idea');
+  $('ideaFeedback').hidden = true;
+  $('ideaFeedback').textContent = '';
 
   ideaIntro.hidden   = true;
   ideaLoading.hidden = false;
   ideaResults.hidden = true;
-  progressBar.classList.add('active');
+  setModeLoading('idea', true);
 
   try {
     const params = buildSearchParams(q);
     params.maxResults = 50;
     const search = await ytFetch('search', { ...params, key: apiKey });
 
-    const regionLangFilter = currentRegion ? REGION_LANG[currentRegion] : null;
+    const regionLangFilter = searchRegion ? REGION_LANG[searchRegion] : null;
     const videos = (search.items || []).filter(v => {
       if (!v.id?.videoId) return false;
       if (regionLangFilter && !titleMatchesRegionLang(v.snippet.title, regionLangFilter)) return false;
@@ -3390,10 +3659,11 @@ async function onIdeaSearch(q, apiKey) {
     });
 
     if (!videos.length) {
-      showToast('결과 없음');
+      $('ideaFeedback').textContent = `“${q}” 검색 결과가 없습니다. 다른 주제를 입력하거나 검색 국가·필터를 바꿔 다시 검색하세요.`;
+      $('ideaFeedback').hidden = false;
       ideaIntro.hidden   = false;
       ideaLoading.hidden = true;
-      progressBar.classList.remove('active');
+      setModeLoading('idea', false);
       return;
     }
 
@@ -3437,12 +3707,13 @@ async function onIdeaSearch(q, apiKey) {
 
     renderIdeaResults(topOutliers, ideaKeywords);
   } catch (err) {
-    showToast('오류: ' + (err.message || err));
+    $('ideaFeedback').textContent = `아이디어를 불러오지 못했습니다. API 키·사용량과 인터넷 연결을 확인한 뒤 검색 버튼으로 다시 시도하세요. (${err.message || err})`;
+    $('ideaFeedback').hidden = false;
     console.error(err);
     ideaIntro.hidden = false;
   } finally {
     ideaLoading.hidden = true;
-    progressBar.classList.remove('active');
+    setModeLoading('idea', false);
   }
 }
 
@@ -3467,10 +3738,13 @@ function fmtDur(sec) {
 }
 
 function renderIdeaResults(outliers, keywords) {
+  ideaBoardVideos.clear();
+  outliers.forEach(v => ideaBoardVideos.set(v.videoId, { ...v, viewCount: v.views, subscriberCount: v.subs, duration: fmtDur(v.durationSec) }));
+  setModeCount('idea', outliers.length);
   ideaVideoCount.textContent = `${outliers.length}개`;
   ideaKwCount.textContent    = `${keywords.length}개`;
 
-  ideaVideoList.innerHTML = outliers.map(v => {
+  ideaVideoList.innerHTML = outliers.length ? outliers.map(v => {
     const norm  = normalizeOutlierScore(v.outlierScore);
     const grade = ideaOutlierGrade(norm);
     const dur   = fmtDur(v.durationSec);
@@ -3489,6 +3763,7 @@ function renderIdeaResults(outliers, keywords) {
         </div>
       </div>
       <div class="idea-card-right">
+        ${boardPickerHtml(v.videoId, 'board-picker-inline')}
         <button class="idea-save-btn${isSaved ? ' saved' : ''}" data-save-id="${escapeHtml(v.videoId)}" title="${isSaved ? '저장 해제' : '저장'}">${isSaved ? '★' : '☆'}</button>
         <div class="idea-score idea-score-${grade.toLowerCase()}">
           <span class="idea-score-num">${norm}</span>
@@ -3496,7 +3771,7 @@ function renderIdeaResults(outliers, keywords) {
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') : '<p class="idea-feedback">영상 성과를 계산할 통계가 없습니다. 다른 주제로 다시 검색하세요.</p>';
 
   ideaVideoList.querySelectorAll('.idea-save-btn').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -3508,7 +3783,7 @@ function renderIdeaResults(outliers, keywords) {
   });
 
   ideaKwList.innerHTML = keywords.map((kw, i) => {
-    return `<div class="idea-kw-row" data-phrase="${escapeHtml(kw.phrase)}">
+    return `<button type="button" class="idea-kw-row" data-phrase="${escapeHtml(kw.phrase)}">
       <span class="idea-kw-rank">${i + 1}</span>
       <span class="idea-kw-text">${escapeHtml(kw.phrase)}</span>
       <span class="idea-kw-freq">${kw.count}개 영상</span>
@@ -3516,15 +3791,15 @@ function renderIdeaResults(outliers, keywords) {
         <span class="idea-kw-badge idea-kw-vol-${kw.volTier}">${escapeHtml(kw.volLabel)}</span>
         <span class="idea-kw-badge idea-kw-comp-${kw.compTier}">${escapeHtml(kw.compLabel)}</span>
       </span>
-      <span class="idea-kw-arrow">›</span>
-    </div>`;
-  }).join('');
+      <span class="idea-kw-arrow" aria-hidden="true">›</span>
+    </button>`;
+  }).join('') || '<p class="idea-feedback">반복해서 등장하는 키워드가 없습니다. 다른 주제로 다시 검색하세요.</p>';
 
   ideaKwList.querySelectorAll('.idea-kw-row').forEach(row => {
     row.addEventListener('click', () => {
       const phrase = row.dataset.phrase;
-      keywordInput.value = phrase;
       setSearchMode('keyword');
+      keywordInput.value = phrase;
       onKeywordAnalysisSearch();
     });
   });
@@ -3675,7 +3950,7 @@ async function onKeywordAnalysisSearch() {
     }
 
     if (runToken !== kwRunToken) return; // 그 사이 새 검색이 시작됐으면 버림
-    pushHistory(keyword);
+    pushHistory(keyword, 'keyword');
     renderKeywordResults(primary, related);
   } catch (err) {
     if (runToken !== kwRunToken) return;
@@ -3791,7 +4066,7 @@ function renderKeywordResults(primary, related) {
   kwCompetitionEl.innerHTML = kwScoreBadge(primary.compLabel, primary.compTier);
 
   const rows = [{ ...primary, relatedScore: null }, ...related];
-  resultCountEl.textContent = rows.length + '개';
+  setModeCount('keyword', rows.length);
   kwTableBody.innerHTML = rows.map(r => `
     <tr>
       <td>
@@ -3842,37 +4117,13 @@ function sortResults() {
 
 /* ───────── 렌더링 ───────── */
 function renderResults() {
-  resultCountEl.textContent = `${displayResults.length}개`;
+  setModeCount('video', displayResults.length);
   if (thumbCount) thumbCount.textContent = `(${displayResults.length})`;
-
-  if (!displayResults.length) {
-    tableWrap.hidden = true;
-    cardGrid.hidden = true;
-    resultsControls.hidden = true;
-    bulkActions.classList.add('hidden');
-    emptyState.hidden = false;
-    const p = emptyState.querySelector('p');
-    if (!hasSearched) {
-      p.textContent = '검색어를 입력하고 검색 버튼을 클릭하세요.';
-    } else if (allResults.length > 0) {
-      p.textContent = '필터 조건에 맞는 결과가 없습니다. 필터를 조정해보세요.';
-    } else {
-      p.textContent = '검색 결과가 없습니다. 다른 키워드를 시도하거나 검색 옵션을 바꿔보세요.';
-    }
-    return;
+  if (displayResults.length) {
+    if (viewMode === 'cards') renderCards();
+    else renderTable();
   }
-  emptyState.hidden = true;
-  resultsControls.hidden = false;
-
-  if (viewMode === 'cards') {
-    tableWrap.hidden = true;
-    cardGrid.hidden = false;
-    renderCards();
-  } else {
-    cardGrid.hidden = true;
-    tableWrap.hidden = false;
-    renderTable();
-  }
+  updateResultVisibility();
 }
 
 function renderTable() {
@@ -3889,6 +4140,7 @@ function renderTable() {
         <a class="title-cell" href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank" rel="noopener" data-detail-id="${r.videoId}">${escapeHtml(r.title)}</a>
       </td>
       <td class="cell-actions">
+        ${boardPickerHtml(r.videoId, 'board-picker-inline')}
         <button class="save-btn ${savedVideoIds.has(r.videoId) ? 'saved' : ''}" data-save-id="${r.videoId}" type="button" title="${savedVideoIds.has(r.videoId) ? '저장 해제' : '저장'}">
           ${savedVideoIds.has(r.videoId) ? '★' : '☆'}
         </button>
@@ -3952,6 +4204,7 @@ function cardHtml(r, isPortrait) {
         <span class="vph-pill">${fmtVPH(r.vph)}</span>
         ${r.duration ? `<span class="duration-overlay">${r.duration}</span>` : ''}
       </a>
+      ${boardPickerHtml(r.videoId)}
       <div class="card-info">
         <h3 class="card-title">${escapeHtml(r.title)}</h3>
         <div class="card-channel" title="${escapeHtml(r.channelTitle)}">${escapeHtml(r.channelTitle)} · 구독자 ${fmtCompact(r.subscriberCount)}</div>
@@ -4104,18 +4357,18 @@ function saveHistory(h) {
   localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(h.slice(0, HISTORY_MAX)));
 }
 
-function pushHistory(q) {
+function pushHistory(q, mode = searchMode) {
   let h = getHistory();
-  const existing = h.find(x => x.q === q && x.mode === searchMode);
+  const existing = h.find(x => x.q === q && x.mode === mode);
   if (existing) {
     existing.at = Date.now();
     existing.count = (existing.count || 1) + 1;
-    h = [existing, ...h.filter(x => !(x.q === q && x.mode === searchMode))];
+    h = [existing, ...h.filter(x => !(x.q === q && x.mode === mode))];
   } else {
-    h.unshift({ q, at: Date.now(), count: 1, mode: searchMode });
+    h.unshift({ q, at: Date.now(), count: 1, mode });
   }
   saveHistory(h);
-  renderHistory();
+  if (mode === searchMode) renderHistory();
 }
 
 function renderHistory() {
@@ -4661,6 +4914,8 @@ function parseMaybeJSON(s) {
 }
 
 function mergeImportedData(newData) {
+  // 보드 ID를 유지해야 저장한 영상의 분류도 함께 복원된다.
+  mergeArrayById(LS_KEY_BOARDS, newData[LS_KEY_BOARDS], 'id');
   // 영상 저장 (videoId 기준 중복 제거, savedAt 더 최근 우선)
   mergeArrayById('ytkw:savedVideos', newData['ytkw:savedVideos'], 'videoId', 'savedAt');
   // 채널 저장 (channelId 기준)
